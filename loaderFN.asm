@@ -1326,14 +1326,6 @@ AfterWormStart
      LDX  #$00
 	 STX   WARMST    ; zerowanie WARMST informuje programy ze byl zimny reset a nie cieply (The Last Starfighter)
 ;	 STX   BOOT
-; przepisanie glownej procedury ladujacej - DWIE STRONY pamieci
-moveloop1
-     LDA   movedproc,X
-     STA   $0700,X 
-     LDA   movedproc+$0100,X
-     STA   $0800,X
-     INX
-     BNE   moveloop1
 ; przepisanie skompresowanej mapy sektorow pliku za bufor sektora
 /* moveloop2
      DEW   CompressedMapCounter    ; zmiejszamy licznik dlugasci mapy
@@ -1397,12 +1389,9 @@ ADDspeedProc
 	 beq   NoHappyLoader
 ; Zwiekszenie Memlo o dlugosc procedury i przelaczenie skoku do niej.
 label73
-     TYA
-     CLC
-     ADC   MEMLO
+     LDA   #<LoaderUSMEMLO
      STA   MEMLO
-     TXA
-     ADC   MEMLO+1
+     LDA   #>LoaderUSMEMLO
      STA   MEMLO+1
      LDA   HappyUSMovedProc
      STA   SioJMP+1               ; po przepisaniu
