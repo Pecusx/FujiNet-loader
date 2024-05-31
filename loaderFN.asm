@@ -170,22 +170,19 @@ JTESTROM = $e471
 JRESETWM = $e474
 JRESETCD = $e477
 
-	org $1FFD
+	org $0700
 
 ; adres bufora na sektor wczytywanego pliku w oryginale $0800, ale moze wydluzyc sie procedura
 ; uwaga, ty juz odjety offset, wiec w procedurze nie odejmujemy!!!
-FileSecBuff = loader.FirstMapSectorNr   ; po przepisaniu
-TempMEMLO = loader.FirstMapSectorNr   ; Koniec procedury loader (poczatek bufora)
-
-START
-     JMP   FirstRun           ;1FFD  4C 70 21
+FileSecBuff = FirstMapSectorNr   ; po przepisaniu
+TempMEMLO = LoaderMEMLO   ; Koniec procedury loader (poczatek bufora)
 
 	 
 ; procedura ladujaca, ktora zostanie przepisana pod adres $0700 po wybraniu programu
 ; do wczytania !!!!!!
 
 movedproc 
-	.local loader, $0700
+
  
 ; adres poczatkowy pamieci do ktorej zapisujemy kolejny ladowany blok pliku
 InBlockAddr
@@ -335,7 +332,177 @@ LastMemPageClear
 ; sluzy do przepisania tego bajtu z glownego programu do zmiennej loadera
 tempToFileEndL
      .BY $00
-    .endl
+
+; tutaj handler N:
+LoaderMEMLO
+; tutaj procka turbo US (opcjonalnie wy³¹czana)
+; UWAGA !!!!!!!!!!!!!!
+; Ta procedura ma maksymalna dlugosc jaka moze miec!!!!!
+; powiekszenie jej O BAJT spowoduje ze przekroczy strone
+; i nie przepisze sie prawidlowo na swoje miejsce !!!!!	 
+HappyUSMovedProc ;
+
+	LDA DBUFA
+	STA SecBuffer
+	LDA DBUFA+1
+	STA SecBuffer+1
+
+	LDA DBYT
+	STA SecLenUS
+
+	SEI
+	TSX
+	STX StackCopy
+	LDA #$0D
+	STA CRETRYZ
+	 ;command retry on zero page
+CommandLoop
+HappySpeed = *+1
+	LDA #$28 ;here goes speed from "?"
+	STA AUDF3
+	LDA #$34
+	STA PBCTL ;ustawienie linii command
+	LDX #$80
+DelayLoopCmd
+	DEX
+	BNE DelayLoopCmd
+	STX AUDF4 ; zero
+	STX TransmitError
+;	pokey init
+	LDA #$23
+xjsr1	JSR SecTransReg
+	;
+
+	CLC
+	LDA DDEVIC    ; tu zawsze jest $31 (przynajmniej powinno)
+	ADC DUNIT     ; dodajemy numer stacji
+	ADC #$FF	; i odejmujemy jeden (jak w systemie Atari)
+	STA CheckSum
+	STA SEROUT
+	LDA DCOMND
+xjsr2	JSR PutSIOByte
+	LDA DAUX1
+xjsr3	JSR PutSIOByte
+	LDA DAUX2
+xjsr4	JSR PutSIOByte
+	LDA CheckSum
+xjsr5	JSR PutSIOByte
+
+waitforEndOftransmission
+	LDA IRQST
+	AND #$08
+	BNE waitforEndOftransmission
+
+	LDA #$13
+xjsr6	JSR SecTransReg
+
+	LDA #$3c
+	STA PBCTL ;command line off
+; two ACK's
+	LDY #2
+DoubleACK
+xjsr7	JSR GetSIOByte
+	CMP #$44
+	BCS ErrorHere
+	DEY
+	BNE DoubleACK
+
+	;ldy #0
+	STY CheckSum
+ReadSectorLoop
+xjsr8	JSR GetSIOByte
+	STA (SecBuffer),y
+xjsr9	JSR AddCheckSum
+	INY
+	CPY SecLenUS
+	BNE ReadSectorLoop
+
+xjsrA	JSR GetSIOByte
+	CMP CheckSum
+	BEQ EndOfTransmission
+;error!!!
+ErrorHere
+	LDY #$90
+	STY TransmitError
+	LDX StackCopy
+	TXS
+	DEC CRETRYZ
+	BNE CommandLoop
+
+EndOfTransmission
+	LDA #0
+	STA AUDC4
+	LDA IRQENS
+	STA IRQEN
+	CLI
+	LDY TransmitError
+	RTS
+
+SecTransReg
+	STA SKCTL
+	STA SKSTRES
+	LDA #$38
+	STA IRQEN
+	LDA #$28
+	STA AUDCTL
+	LDA #$A8
+	STA AUDC4
+	RTS
+
+PutSIOByte
+	TAX
+waitforSerial
+	LDA IRQST
+	AND #$10
+	BNE waitforSerial
+
+	STA IRQEN
+	LDA #$10
+	STA IRQEN
+
+	TXA
+	STA SEROUT
+
+AddCheckSum
+	CLC
+	ADC CheckSum
+	ADC #0
+	STA CheckSum
+	RTS
+
+GetSIOByte
+	LDX #10  ;acktimeout
+ExternalLoop
+	LDA #0
+	STA looperka
+InternalLoop
+	LDA IRQST
+	AND #$20
+	BEQ ACKReceive
+	DEC looperka
+	BNE InternalLoop
+	DEX
+	BNE ExternalLoop
+	BEQ ErrorHere
+ACKReceive
+	; zero we have now
+	STA IRQST
+	LDA #$20
+	STA IRQST
+	LDA SKSTAT
+	STA SKSTRES
+	AND #$20
+	BEQ ErrorHere
+	;
+	LDA SERIN
+	RTS
+EndHappyUSProc
+
+LoaderUSMEMLO
+
+START
+     JMP   FirstRun           ;1FFD  4C 70 21
+
 JAkieTurbo
 USmode
 	 .BY $01     ; 0 - brak turbo   1 - Ultra Speed
@@ -469,8 +636,8 @@ SpartaDisk
 	 LDA  #$00
      INX                   ; i wyliczenie starszego bajtu
 Sektor128b
-     STA   .adr loader.SecLen	; przed przepisaniem
-     STX   .adr loader.SecLen+1	; przed przepisaniem
+     STA   .adr SecLen	; przed przepisaniem
+     STX   .adr SecLen+1	; przed przepisaniem
 	 ; pokazanie na ekranie
 	 LDA   DensityCodes,X
 	 STA   DensityDisplay
@@ -918,24 +1085,24 @@ SetTurboOFF
 NoSHIFT
      LDY  #$01
      LDA  ($D4),Y
-     STA   .adr loader.FirstMapSectorNr	; przed przepisaniem
+     STA   .adr FirstMapSectorNr	; przed przepisaniem
 	 sta  blokDanychIO+$A   ; od razu do bloku IOCB
      INY
      LDA  ($D4),Y
-     STA   .adr loader.FirstMapSectorNr+1	; przed przepisaniem
+     STA   .adr FirstMapSectorNr+1	; przed przepisaniem
 	 sta  blokDanychIO+$B   ; od razu do bloku IOCB
      INY
      LDA  ($D4),Y
      EOR  #$FF
-     STA   .adr loader.tempToFileEndL
+     STA   .adr tempToFileEndL
      INY
      LDA  ($D4),Y
      EOR  #$FF
-     STA   .adr loader.ToFileEndH	; przed przepisaniem
+     STA   .adr ToFileEndH	; przed przepisaniem
      INY
      LDA  ($D4),Y
      EOR  #$FF
-     STA   .adr loader.ToFileEndH+1	; przed przepisaniem
+     STA   .adr ToFileEndH+1	; przed przepisaniem
 ; wszystko zapamietane mozna robic mape sektorow....
 ; skompresowana mapa bedzie tworzona w buforze sektora katalogu
 ; czyli DirSectorBuff
@@ -1036,12 +1203,12 @@ GetNextMapWord
 Sector00
      ADW MapCounter #2
 ops01
-     ; CPW MapCounter {.adr loader.SecLen}   ; a to nie dziala
+     ; CPW MapCounter {.adr SecLen}   ; a to nie dziala
 	 LDA MapCounter+1
-	 CMP .adr loader.SecLen+1
+	 CMP .adr SecLen+1
 	 bne noteqal01
 	 LDA MapCounter
-	 CMP .adr loader.SecLen	 
+	 CMP .adr SecLen	 
 noteqal01
      JNE GenerateCompressedMap
 ; czytamy nastepny sektor mapy
@@ -1124,13 +1291,13 @@ AfterWormStart
 ;     JSR EditorOpen   ; zamiast cieplego startu czyszczenie ekranu
 	 CLC
      LDA   #<TempMEMLO
-	 ADC   .adr loader.SecLen
+	 ADC   .adr SecLen
      STA   MEMLO
 	 STA   CompressedMapPos
 ;	 STA   pointerMov2b-1   ; przygotowanie procedury przepisujacej
 ;     STA   APPMHI           ; wlasciwie tu powinno byc to samo co po pozniejszym zwiekszeniu MEMLO !!!!
      LDA   #>TempMEMLO
-     ADC   .adr loader.SecLen+1
+     ADC   .adr SecLen+1
      STA   MEMLO+1
 	 STA   CompressedMapPos+1
 ;	 STA   pointerMov2b
@@ -1145,11 +1312,9 @@ AfterWormStart
 	 LDA MEMLO
 ;	 ADC CompressedMapCounter
 ;	 STA MEMLO
-	 STA TurboRelocADDR
 	 LDA MEMLO+1
 ;	 ADC CompressedMapCounter+1
 ;	 STA MEMLO+1
-	 STA TurboRelocADDR+1
      LDA  #<JTESTROM
      STA   DOSINI
      LDA  #>JTESTROM
@@ -1222,7 +1387,7 @@ NoZpage
       STA ICBADR+1,X
       JSR CIO
 	 
-     JMP   loader.LoadStart     ; po przepisaniu 
+     JMP   LoadStart     ; po przepisaniu 
 FileToOpen
      .BYTE 'H:SCORCH.XEX',0
 ; Sprawdzenie odpowiednich flag i przepisanie za loaderem procedury obslugi odpowiedniego Turba
@@ -1230,45 +1395,6 @@ FileToOpen
 ADDspeedProc
      LDA   USmode
 	 beq   NoHappyLoader
-; wyznaczamy offset procedury
-    SEC
-	LDA #<HappyUSMovedProc
-	SBC MEMLO
-	STA HappyOffset
-	LDA #>HappyUSMovedProc
-	SBC MEMLO+1
-	STA HappyOffset+1
-
-	LDY #0
-	LDX #[$A-1]  ;xjsrA - the last
-	; relokujemy skoki pod offset z MEMLO
-HappyRelocate
-	SEC
-	LDA xjsrTableL,x
-	STA SecBuffer
-	LDA xjsrTableH,x
-	STA SecBuffer+1
-	LDA (SecBuffer),y
-	SBC HappyOffset
-	STA (SecBuffer),y
-	INY
-	LDA (SecBuffer),y
-	SBC HappyOffset+1
-	STA (SecBuffer),y
-	DEY
-	DEX
-	BPL HappyRelocate
-
-     LDX  #[EndHappyUSProc-HappyUSMovedProc-1]
-label72x
-     LDA   HappyUSMovedProc,X
-TurboRelocADDR=*+1
-     STA   $0A00,X
-     DEX
-	 CPX #$FF
-     BNE   label72x
-   LDY   #[EndHappyUSProc-HappyUSMovedProc]
-     LDX   #$00
 ; Zwiekszenie Memlo o dlugosc procedury i przelaczenie skoku do niej.
 label73
      TYA
@@ -1278,176 +1404,12 @@ label73
      TXA
      ADC   MEMLO+1
      STA   MEMLO+1
-     LDA   TurboRelocADDR
-     STA   loader.SioJMP+1               ; po przepisaniu
-     LDA   TurboRelocADDR+1
-     STA   loader.SioJMP+2             ; po przepisaniu
+     LDA   HappyUSMovedProc
+     STA   SioJMP+1               ; po przepisaniu
+     LDA   HappyUSMovedProc+1
+     STA   SioJMP+2             ; po przepisaniu
 NoHappyLoader
      RTS
-
-
-
-; UWAGA !!!!!!!!!!!!!!
-; Ta procedura ma maksymalna dlugosc jaka moze miec!!!!!
-; powiekszenie jej O BAJT spowoduje ze przekroczy strone
-; i nie przepisze sie prawidlowo na swoje miejsce !!!!!	 
-HappyUSMovedProc ;
-
-	LDA DBUFA
-	STA SecBuffer
-	LDA DBUFA+1
-	STA SecBuffer+1
-
-	LDA DBYT
-	STA SecLenUS
-
-	SEI
-	TSX
-	STX StackCopy
-	LDA #$0D
-	STA CRETRYZ
-	 ;command retry on zero page
-CommandLoop
-HappySpeed = *+1
-	LDA #$28 ;here goes speed from "?"
-	STA AUDF3
-	LDA #$34
-	STA PBCTL ;ustawienie linii command
-	LDX #$80
-DelayLoopCmd
-	DEX
-	BNE DelayLoopCmd
-	STX AUDF4 ; zero
-	STX TransmitError
-;	pokey init
-	LDA #$23
-xjsr1	JSR SecTransReg
-	;
-
-	CLC
-	LDA DDEVIC    ; tu zawsze jest $31 (przynajmniej powinno)
-	ADC DUNIT     ; dodajemy numer stacji
-	ADC #$FF	; i odejmujemy jeden (jak w systemie Atari)
-	STA CheckSum
-	STA SEROUT
-	LDA DCOMND
-xjsr2	JSR PutSIOByte
-	LDA DAUX1
-xjsr3	JSR PutSIOByte
-	LDA DAUX2
-xjsr4	JSR PutSIOByte
-	LDA CheckSum
-xjsr5	JSR PutSIOByte
-
-waitforEndOftransmission
-	LDA IRQST
-	AND #$08
-	BNE waitforEndOftransmission
-
-	LDA #$13
-xjsr6	JSR SecTransReg
-
-	LDA #$3c
-	STA PBCTL ;command line off
-; two ACK's
-	LDY #2
-DoubleACK
-xjsr7	JSR GetSIOByte
-	CMP #$44
-	BCS ErrorHere
-	DEY
-	BNE DoubleACK
-
-	;ldy #0
-	STY CheckSum
-ReadSectorLoop
-xjsr8	JSR GetSIOByte
-	STA (SecBuffer),y
-xjsr9	JSR AddCheckSum
-	INY
-	CPY SecLenUS
-	BNE ReadSectorLoop
-
-xjsrA	JSR GetSIOByte
-	CMP CheckSum
-	BEQ EndOfTransmission
-;error!!!
-ErrorHere
-	LDY #$90
-	STY TransmitError
-	LDX StackCopy
-	TXS
-	DEC CRETRYZ
-	BNE CommandLoop
-
-EndOfTransmission
-	LDA #0
-	STA AUDC4
-	LDA IRQENS
-	STA IRQEN
-	CLI
-	LDY TransmitError
-	RTS
-
-SecTransReg
-	STA SKCTL
-	STA SKSTRES
-	LDA #$38
-	STA IRQEN
-	LDA #$28
-	STA AUDCTL
-	LDA #$A8
-	STA AUDC4
-	RTS
-
-PutSIOByte
-	TAX
-waitforSerial
-	LDA IRQST
-	AND #$10
-	BNE waitforSerial
-
-	STA IRQEN
-	LDA #$10
-	STA IRQEN
-
-	TXA
-	STA SEROUT
-
-AddCheckSum
-	CLC
-	ADC CheckSum
-	ADC #0
-	STA CheckSum
-	RTS
-
-GetSIOByte
-	LDX #10  ;acktimeout
-ExternalLoop
-	LDA #0
-	STA looperka
-InternalLoop
-	LDA IRQST
-	AND #$20
-	BEQ ACKReceive
-	DEC looperka
-	BNE InternalLoop
-	DEX
-	BNE ExternalLoop
-	BEQ ErrorHere
-ACKReceive
-	; zero we have now
-	STA IRQST
-	LDA #$20
-	STA IRQST
-	LDA SKSTAT
-	STA SKSTRES
-	AND #$20
-	BEQ ErrorHere
-	;
-	LDA SERIN
-	RTS
-EndHappyUSProc
 
 
 ; Rozkaz DCB "?" pobierrajacy predkosc dla Happy i US-Doubler
@@ -1491,10 +1453,10 @@ DiscNotChanged2
 	 STA   InMapPointer+1		; --
 label80
 	 LDY   InMapPointer		; --
-     CPY   .adr loader.SecLen	; przed przepisaniem
+     CPY   .adr SecLen	; przed przepisaniem
 	 BNE   NoNextMapSector		; --
 	 LDA   InMapPointer+1			; --
-	 CMP   .adr loader.Seclen+1	; --
+	 CMP   .adr Seclen+1	; --
      BEQ   DiscNotChanged2
 NoNextMapSector
 	; pobranie numeru nastepnego sektora katalogu z mapy sektorow
@@ -1545,17 +1507,17 @@ NoIncH
 label79
      LDA   CurrentFileInfoBuff
      CLC
-     ADC   .adr loader.SecLen	; przed przepisaniem
+     ADC   .adr SecLen	; przed przepisaniem
      STA   CurrentFileInfoBuff
      LDA   CurrentFileInfoBuff+1
-     ADC   .adr loader.SecLen+1	; przed przepisaniem
+     ADC   .adr SecLen+1	; przed przepisaniem
      STA   CurrentFileInfoBuff+1
      LDA   $D4
      SEC
-     SBC   .adr loader.SecLen	; przed przepisaniem
+     SBC   .adr SecLen	; przed przepisaniem
      STA   $D4
      LDA   $D5
-     SBC   .adr loader.SecLen+1	; przed przepisaniem
+     SBC   .adr SecLen+1	; przed przepisaniem
      STA   $D5
      BCS   label80
      LDA   CurrentFileInfoBuff
@@ -1634,9 +1596,9 @@ ReadFirstSect
 ; Wczytuje sektror ustalajac jego dlugosc na podstawie blokDanychIO_Loader (SecLen)
 ; reszta danych jak nizej (A nie wazne)
 ReadSector
-     LDA   .adr loader.SecLen+1		; --- obsluga sektorow ponad 256b
+     LDA   .adr SecLen+1		; --- obsluga sektorow ponad 256b
 	 STA   blokDanychIO+9			; --- obsluga sektorow ponad 256b
-     LDA   .adr loader.SecLen	; przed przepisaniem
+     LDA   .adr SecLen	; przed przepisaniem
 ReadSector1
      STA   blokDanychIO+8
      STX   blokDanychIO+5
@@ -1886,7 +1848,7 @@ SeTDriveLetter
 	 STA DriveDisp1-1
      RTS
 SeTblokDanychDrive
-     STA .adr loader.blokDanychIO_Loader+1	; przed przepisaniem
+     STA .adr blokDanychIO_Loader+1	; przed przepisaniem
      STA blokDanychIO+1
      STA blokDanychIO_GetUSSpeed+1
 	 STA blokDanychIO_PERCOM+1
