@@ -1,3 +1,7 @@
+
+; kompilacja w jednym ciaglym bloku i bez naglowka DOS (bedzie ATR)
+    opt h-f+
+
      ;MICRO SPARTA DOS 4.7
 	 
 ; w wersji 4.7 dodac mo¿naby przechodzenie po kolejnych "ekranach" z lista plikow klawiszami
@@ -170,7 +174,10 @@ JTESTROM = $e471
 JRESETWM = $e474
 JRESETCD = $e477
 
-	org $0700
+
+	org $0700-16
+; naglowek pliku ATR - 16b
+    .BY $96,$02,$00,$08,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 ; adres bufora na sektor wczytywanego pliku w oryginale $0800, ale moze wydluzyc sie procedura
 ; uwaga, ty juz odjety offset, wiec w procedurze nie odejmujemy!!!
@@ -180,19 +187,20 @@ TempMEMLO = LoaderMEMLO   ; Koniec procedury loader (poczatek bufora)
 	 
 ; procedura ladujaca, ktora zostanie przepisana pod adres $0700 po wybraniu programu
 ; do wczytania !!!!!!
-
+StartOfCode
 movedproc 
 
  
 ; adres poczatkowy pamieci do ktorej zapisujemy kolejny ladowany blok pliku
 InBlockAddr
-    .WO 00  ; word
+    .BY 00,(EndOfCode-StartOfCode)/128+1  ; word
 ; dlugosc ladowanego bloku 
 BlockLen
-    .WO 00 ; word
+    .WO $0700 ; word - chwilowo czesc naglowka BOOT - adres ladowania
 ; zmienna tymczasowa potrzebna do obliczenia dlugosci bloku
 BlockATemp
-    .WO 00
+    .WO $0706
+    jmp LoaderGo
 FileInit		; skok JSR pod adres inicjalizacji po (przed) kazdym nastepnym bloku binarnym
      JSR   GoInitAddr
 FileNextBlock
@@ -1965,11 +1973,12 @@ QMEGstring
 	;.OPT List
 	
 
-     org $02e0
-     .WO LoaderGo
+     ;org $02e0
+     ;.WO LoaderGo
+     
     ; .WO START 
 	; na koniec pliku dwa bajty $00 bez naglowka (dla bootloadera)
 ;    OPT h-
 ;	org $0000
 ;	.WO $0000
-	
+EndOfCode
