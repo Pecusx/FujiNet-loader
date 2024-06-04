@@ -1296,6 +1296,7 @@ AfterWormStart
 	 ; odtworzenie stanu PBI
 	 LDA PDVMASKtemp
 	 STA PDVMASK
+     ;JSR RELOCATE_START ; nic nie relokuje, inicjowanie handlera N:
 ;     JSR EditorOpen   ; zamiast cieplego startu czyszczenie ekranu
 	 CLC
      LDA   #<TempMEMLO

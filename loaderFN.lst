@@ -1393,697 +1393,698 @@ Source: SYSEQU.ASM
   1296 					 ; odtworzenie stanu PBI
   1297 0EC1 AD CA 12			 LDA PDVMASKtemp
   1298 0EC4 8D 47 02			 STA PDVMASK
-  1299 				;     JSR EditorOpen   ; zamiast cieplego startu czyszczenie ekranu
-  1300 0EC7 18				 CLC
-  1301 0EC8 A9 24		     LDA   #<TempMEMLO
-  1302 0ECA 6D DF 07			 ADC   .adr SecLen
-  1303 0ECD 8D E7 02		     STA   MEMLO
-  1304 0ED0 85 3D			 STA   CompressedMapPos
-  1305 				;	 STA   pointerMov2b-1   ; przygotowanie procedury przepisujacej
-  1306 				;     STA   APPMHI           ; wlasciwie tu powinno byc to samo co po pozniejszym zwiekszeniu MEMLO !!!!
-  1307 0ED2 A9 08		     LDA   #>TempMEMLO
-  1308 0ED4 6D E0 07		     ADC   .adr SecLen+1
-  1309 0ED7 8D E8 02		     STA   MEMLO+1
-  1310 0EDA 85 3E			 STA   CompressedMapPos+1
-  1311 				;	 STA   pointerMov2b
-  1312 				;     STA   APPMHI+1
-  1313 					 ; tu w MEMLO mamy pierwszy wolny bajt za buforem sektora
-  1314 					 ; jest to jednoczesnie adres umieszczenia skompresowanej
-  1315 					 ; mapy sektorow pliku dla loadera ale MINUS 1
-  1316 0EDC A5 3D D0 02 C6 3E + 	 DEW   CompressedMapPos
-  1317 					 ; teraz trzeba dodac dlugosc skompresowanej mapy bitowej
-  1318 					 ; i wpisac w procedurze przepisujacej turbo (modyfikacja kodu)
-  1319 0EE4 18				 CLC
-  1320 0EE5 AD E7 02			 LDA MEMLO
-  1321 				;	 ADC CompressedMapCounter
-  1322 				;	 STA MEMLO
-  1323 0EE8 AD E8 02			 LDA MEMLO+1
-  1324 				;	 ADC CompressedMapCounter+1
-  1325 				;	 STA MEMLO+1
-  1326 0EEB A9 71		     LDA  #<JTESTROM
-  1327 0EED 85 0C		     STA   DOSINI
-  1328 0EEF A9 E4		     LDA  #>JTESTROM
-  1329 0EF1 85 0D		     STA   DOSINI+1
-  1330 				;	 DEC   BOOT  ; przestawiamy z 2 na 1 (z CASINI na DOSINI)
-  1331 				;     INC   $033D  ; bajty kontrolne zimnego startu
-  1332 				;     INC   $033E  ; zmiana ich wartosci wymusza
-  1333 				;     DEC   $033F  ; zimny start po RESET  (blokujemy bo niektore gry startujace przez zmiane wektorow i skok do reset nie dzialaja)
-  1334 0EF3 A2 00		     LDX  #$00
-  1335 0EF5 86 08			 STX   WARMST    ; zerowanie WARMST informuje programy ze byl zimny reset a nie cieply (The Last Starfighter)
-  1336 				;	 STX   BOOT
-  1337 				; przepisanie skompresowanej mapy sektorow pliku za bufor sektora
-  1338 				/* moveloop2
-  1339 				     DEW   CompressedMapCounter    ; zmiejszamy licznik dlugasci mapy
-  1340 				pointerMov2a=*+2
-  1341 					 LDA   CompressedMap,x     ; kod samomodyfikujacy sie
-  1342 				pointerMov2b=*+2
-  1343 				     STA   $FFFF,x              ; kod samomodyfikujacy sie
-  1344 					 LDA   CompressedMapCounter
-  1345 					 AND   CompressedMapCounter+1
-  1346 				     CMP   #$FF                      ; jesli licznik = -1 to przepisalismy cala mape !!!
-  1347 					 BEQ   SectorMapReady
-  1348 				  	 INX
-  1349 					 BNE   moveloop2
-  1350 					 inc   pointerMov2a
-  1351 					 inc   pointerMov2b
-  1352 					 bne   moveloop2 
-  1353 				SectorMapReady
-  1354 				 */
-  1354
-  1355 0EF7 20 46 0F		     JSR   ADDspeedProc   ; procedura relokujaca procedury turbo (jesli potrzebne) i podnaszaca odpowiednio MEMLO
-  1356 0EFA 20 6E 12			 JSR   MEMLOprint     ; wyswietlenie wartosci MEMLO (moze wyswietlac i inne rzeczy)
-  1357
-  1358 0EFD A2 00		     LDX  #$00
-  1359 0EFF 8A			     TXA
-  1360 				; wstepne czyszczenie (reszte RAM czysci procedura ladujaca - dzieki czemu czysci tez program glowny)
-  1361 0F00			ClearLoop1
-  1362 0F00 9D 00 01		     STA   $0100,X 		; STOS !!!
-  1363 0F03 9D 00 04		     STA   $0400,X			; bufor magnetofonu (128) i obszar zarezerwowany?? (drugie 128b)
-  1364 0F06 9D 00 05		     STA   $0500,X 
-  1365 0F09 9D 00 06		     STA   $0600,X 
-  1366 0F0C E0 80		     CPX  #$80             ;tylko ponad $80
-  1367 0F0E 90 02		     BCC   NoZpage
-  1368 0F10 95 00		     STA   $00,X           ; czyli polowa strony zerowej
-  1369 0F12			NoZpage
-  1370 0F12 E8			     INX
-  1371 0F13 D0 EB		     BNE   ClearLoop1
-  1372 0F15 A2 FF		     LDX  #$FF
-  1373 0F17 9A			     TXS 					; "wyzerowanie wskaznika STOSU
-  1374 				     
-  1375 				     ; a tutaj otwieramy kanal 1 CIO do odczytu 
-  1376
-  1377 0F18 A2 10		      LDX #16 ; kanal 1
-  1378 0F1A A9 03		      LDA #COPN ; rozkaz OPEN
-  1379 0F1C 9D 42 03		      STA ICCOM,X ; COMMAND
-  1380 0F1F A9 04		        LDA #$04    ; READ
-  1381 0F21 9D 4A 03		        STA ICAUX1,X
-  1382 0F24 A9 00		        LDA #$00
-  1383 0F26 9D 4B 03		        STA ICAUX2,X
-  1384 0F29 A9 39		      LDA # <FileToOpen
-  1385 0F2B 9D 44 03		      STA ICBADR,X
-  1386 0F2E A9 0F		      LDA # >FileToOpen
-  1387 0F30 9D 45 03		      STA ICBADR+1,X
-  1388 0F33 20 56 E4		      JSR CIO
-  1389 					 
-  1390 0F36 4C E9 07		     JMP   LoadStart     ; po przepisaniu 
-  1391 0F39			FileToOpen
-  1392 0F39 48 3A 53 43 4F 52 +      .BYTE 'H:SCORCH.XEX',0
-  1393 				; Sprawdzenie odpowiednich flag i przepisanie za loaderem procedury obslugi odpowiedniego Turba
-  1394 				; na koniec odpowiednie zmodyfikowanie MEMLO
-  1395 0F46			ADDspeedProc
-  1396 0F46 AD 26 09		     LDA   USmode
-  1397 0F49 F0 16			 beq   NoHappyLoader
-  1398 				; Zwiekszenie Memlo o dlugosc procedury i przelaczenie skoku do niej.
-  1399 0F4B			label73
-  1400 0F4B A9 23		     LDA   #<LoaderUSMEMLO
-  1401 0F4D 8D E7 02		     STA   MEMLO
-  1402 0F50 A9 09		     LDA   #>LoaderUSMEMLO
-  1403 0F52 8D E8 02		     STA   MEMLO+1
-  1404 0F55 AD 24 08		     LDA   HappyUSMovedProc
-  1405 0F58 8D E6 07		     STA   SioJMP+1               ; po przepisaniu
-  1406 0F5B AD 25 08		     LDA   HappyUSMovedProc+1
-  1407 0F5E 8D E7 07		     STA   SioJMP+2             ; po przepisaniu
-  1408 0F61			NoHappyLoader
-  1409 0F61 60			     RTS
-  1410
+  1299 				     ;JSR RELOCATE_START ; nic nie relokuje, inicjowanie handlera N:
+  1300 				;     JSR EditorOpen   ; zamiast cieplego startu czyszczenie ekranu
+  1301 0EC7 18				 CLC
+  1302 0EC8 A9 24		     LDA   #<TempMEMLO
+  1303 0ECA 6D DF 07			 ADC   .adr SecLen
+  1304 0ECD 8D E7 02		     STA   MEMLO
+  1305 0ED0 85 3D			 STA   CompressedMapPos
+  1306 				;	 STA   pointerMov2b-1   ; przygotowanie procedury przepisujacej
+  1307 				;     STA   APPMHI           ; wlasciwie tu powinno byc to samo co po pozniejszym zwiekszeniu MEMLO !!!!
+  1308 0ED2 A9 08		     LDA   #>TempMEMLO
+  1309 0ED4 6D E0 07		     ADC   .adr SecLen+1
+  1310 0ED7 8D E8 02		     STA   MEMLO+1
+  1311 0EDA 85 3E			 STA   CompressedMapPos+1
+  1312 				;	 STA   pointerMov2b
+  1313 				;     STA   APPMHI+1
+  1314 					 ; tu w MEMLO mamy pierwszy wolny bajt za buforem sektora
+  1315 					 ; jest to jednoczesnie adres umieszczenia skompresowanej
+  1316 					 ; mapy sektorow pliku dla loadera ale MINUS 1
+  1317 0EDC A5 3D D0 02 C6 3E + 	 DEW   CompressedMapPos
+  1318 					 ; teraz trzeba dodac dlugosc skompresowanej mapy bitowej
+  1319 					 ; i wpisac w procedurze przepisujacej turbo (modyfikacja kodu)
+  1320 0EE4 18				 CLC
+  1321 0EE5 AD E7 02			 LDA MEMLO
+  1322 				;	 ADC CompressedMapCounter
+  1323 				;	 STA MEMLO
+  1324 0EE8 AD E8 02			 LDA MEMLO+1
+  1325 				;	 ADC CompressedMapCounter+1
+  1326 				;	 STA MEMLO+1
+  1327 0EEB A9 71		     LDA  #<JTESTROM
+  1328 0EED 85 0C		     STA   DOSINI
+  1329 0EEF A9 E4		     LDA  #>JTESTROM
+  1330 0EF1 85 0D		     STA   DOSINI+1
+  1331 				;	 DEC   BOOT  ; przestawiamy z 2 na 1 (z CASINI na DOSINI)
+  1332 				;     INC   $033D  ; bajty kontrolne zimnego startu
+  1333 				;     INC   $033E  ; zmiana ich wartosci wymusza
+  1334 				;     DEC   $033F  ; zimny start po RESET  (blokujemy bo niektore gry startujace przez zmiane wektorow i skok do reset nie dzialaja)
+  1335 0EF3 A2 00		     LDX  #$00
+  1336 0EF5 86 08			 STX   WARMST    ; zerowanie WARMST informuje programy ze byl zimny reset a nie cieply (The Last Starfighter)
+  1337 				;	 STX   BOOT
+  1338 				; przepisanie skompresowanej mapy sektorow pliku za bufor sektora
+  1339 				/* moveloop2
+  1340 				     DEW   CompressedMapCounter    ; zmiejszamy licznik dlugasci mapy
+  1341 				pointerMov2a=*+2
+  1342 					 LDA   CompressedMap,x     ; kod samomodyfikujacy sie
+  1343 				pointerMov2b=*+2
+  1344 				     STA   $FFFF,x              ; kod samomodyfikujacy sie
+  1345 					 LDA   CompressedMapCounter
+  1346 					 AND   CompressedMapCounter+1
+  1347 				     CMP   #$FF                      ; jesli licznik = -1 to przepisalismy cala mape !!!
+  1348 					 BEQ   SectorMapReady
+  1349 				  	 INX
+  1350 					 BNE   moveloop2
+  1351 					 inc   pointerMov2a
+  1352 					 inc   pointerMov2b
+  1353 					 bne   moveloop2 
+  1354 				SectorMapReady
+  1355 				 */
+  1355
+  1356 0EF7 20 46 0F		     JSR   ADDspeedProc   ; procedura relokujaca procedury turbo (jesli potrzebne) i podnaszaca odpowiednio MEMLO
+  1357 0EFA 20 6E 12			 JSR   MEMLOprint     ; wyswietlenie wartosci MEMLO (moze wyswietlac i inne rzeczy)
+  1358
+  1359 0EFD A2 00		     LDX  #$00
+  1360 0EFF 8A			     TXA
+  1361 				; wstepne czyszczenie (reszte RAM czysci procedura ladujaca - dzieki czemu czysci tez program glowny)
+  1362 0F00			ClearLoop1
+  1363 0F00 9D 00 01		     STA   $0100,X 		; STOS !!!
+  1364 0F03 9D 00 04		     STA   $0400,X			; bufor magnetofonu (128) i obszar zarezerwowany?? (drugie 128b)
+  1365 0F06 9D 00 05		     STA   $0500,X 
+  1366 0F09 9D 00 06		     STA   $0600,X 
+  1367 0F0C E0 80		     CPX  #$80             ;tylko ponad $80
+  1368 0F0E 90 02		     BCC   NoZpage
+  1369 0F10 95 00		     STA   $00,X           ; czyli polowa strony zerowej
+  1370 0F12			NoZpage
+  1371 0F12 E8			     INX
+  1372 0F13 D0 EB		     BNE   ClearLoop1
+  1373 0F15 A2 FF		     LDX  #$FF
+  1374 0F17 9A			     TXS 					; "wyzerowanie wskaznika STOSU
+  1375 				     
+  1376 				     ; a tutaj otwieramy kanal 1 CIO do odczytu 
+  1377
+  1378 0F18 A2 10		      LDX #16 ; kanal 1
+  1379 0F1A A9 03		      LDA #COPN ; rozkaz OPEN
+  1380 0F1C 9D 42 03		      STA ICCOM,X ; COMMAND
+  1381 0F1F A9 04		        LDA #$04    ; READ
+  1382 0F21 9D 4A 03		        STA ICAUX1,X
+  1383 0F24 A9 00		        LDA #$00
+  1384 0F26 9D 4B 03		        STA ICAUX2,X
+  1385 0F29 A9 39		      LDA # <FileToOpen
+  1386 0F2B 9D 44 03		      STA ICBADR,X
+  1387 0F2E A9 0F		      LDA # >FileToOpen
+  1388 0F30 9D 45 03		      STA ICBADR+1,X
+  1389 0F33 20 56 E4		      JSR CIO
+  1390 					 
+  1391 0F36 4C E9 07		     JMP   LoadStart     ; po przepisaniu 
+  1392 0F39			FileToOpen
+  1393 0F39 48 3A 53 43 4F 52 +      .BYTE 'H:SCORCH.XEX',0
+  1394 				; Sprawdzenie odpowiednich flag i przepisanie za loaderem procedury obslugi odpowiedniego Turba
+  1395 				; na koniec odpowiednie zmodyfikowanie MEMLO
+  1396 0F46			ADDspeedProc
+  1397 0F46 AD 26 09		     LDA   USmode
+  1398 0F49 F0 16			 beq   NoHappyLoader
+  1399 				; Zwiekszenie Memlo o dlugosc procedury i przelaczenie skoku do niej.
+  1400 0F4B			label73
+  1401 0F4B A9 23		     LDA   #<LoaderUSMEMLO
+  1402 0F4D 8D E7 02		     STA   MEMLO
+  1403 0F50 A9 09		     LDA   #>LoaderUSMEMLO
+  1404 0F52 8D E8 02		     STA   MEMLO+1
+  1405 0F55 AD 24 08		     LDA   HappyUSMovedProc
+  1406 0F58 8D E6 07		     STA   SioJMP+1               ; po przepisaniu
+  1407 0F5B AD 25 08		     LDA   HappyUSMovedProc+1
+  1408 0F5E 8D E7 07		     STA   SioJMP+2             ; po przepisaniu
+  1409 0F61			NoHappyLoader
+  1410 0F61 60			     RTS
   1411
-  1412 				; Rozkaz DCB "?" pobierrajacy predkosc dla Happy i US-Doubler
-  1413 0F62			blokDanychIO_GetUSSpeed
-  1414 0F62 31 01 3F 40		     .BY $31,$01,"?",$40
-  1415 0F66 3C 08		     .WO HappySpeed
-  1416 0F68 07 00 01 00 00 0A	     .BY $07,$00,$01,$00,$00,$0A
-  1417 0F6E			DirMapEnd
-  1418 0F6E 4C 3A 10		     JMP   label75
-  1419 0F71			label39
-  1420 0F71 85 DA		     STA   $DA 
-  1421 0F73 A5 D0		     LDA   CurrentFileInfoBuff
-  1422 0F75 85 DB		     STA   $DB
-  1423 0F77 A5 D1		     LDA   CurrentFileInfoBuff+1
-  1424 0F79 85 DC		     STA   $DC
-  1425 0F7B 20 EE 11		     JSR   DiscChangeCheck   ; Sprawdzenie czy w miedzyczasie nie zostala zmieniona dyskietka
-  1426 0F7E F0 05		     BEQ   DiscNotChanged2
-  1427 0F80 68			     PLA
-  1428 0F81 68			     PLA
-  1429 0F82 4C D8 09		     JMP   ReadMainDir
-  1430 0F85			DiscNotChanged2
-  1431 				     ; odczyt sektora mapy wskazywanego przez DirMapSec
-  1432 0F85 A5 D2		     LDA   DirMapSect
-  1433 0F87 8D EA 10		     STA   blokDanychIO+10
-  1434 0F8A A5 D3		     LDA   DirMapSect+1
-  1435 0F8C 8D EB 10		     STA   blokDanychIO+11
-  1436 0F8F 0D EA 10		     ORA   blokDanychIO+10
-  1437 0F92 F0 DA		     BEQ   DirMapEnd
-  1438 0F94 A2 14		     LDX  #>DirMapSectorBuff
-  1439 0F96 A0 80		     LDY  #<DirMapSectorBuff
-  1440 0F98 20 B2 10		     JSR   ReadSector
-  1441 					 ; zostal wczytany kolejny sektor mapy nalezy wiec zapamietac we wskazniku DirMapSec
-  1442 					 ; numer nastepnego sektora mapy. To 2 pierwsze bajty z bufora na sektor mapy
-  1443 0F9B AD 80 14		     LDA   DirMapSectorBuff
-  1444 0F9E 85 D2		     STA   DirMapSect
-  1445 0FA0 AD 81 14		     LDA   DirMapSectorBuff+1
-  1446 0FA3 85 D3		     STA   DirMapSect+1
-  1447 0FA5 A9 04		     LDA  #$04 
-  1448 0FA7 85 E2			 STA   InMapPointer		; --
-  1449 0FA9 A9 00			 LDA  #$00					; --
-  1450 0FAB 85 E3			 STA   InMapPointer+1		; --
-  1451 0FAD			label80
-  1452 0FAD A4 E2			 LDY   InMapPointer		; --
-  1453 0FAF CC DF 07		     CPY   .adr SecLen	; przed przepisaniem
-  1454 0FB2 D0 07			 BNE   NoNextMapSector		; --
-  1455 0FB4 A5 E3			 LDA   InMapPointer+1			; --
-  1456 0FB6 CD E0 07			 CMP   .adr Seclen+1	; --
-  1457 0FB9 F0 CA		     BEQ   DiscNotChanged2
-  1458 0FBB			NoNextMapSector
-  1459 					; pobranie numeru nastepnego sektora katalogu z mapy sektorow
-  1460 					 ; tymczasowy adrez na ZP
-  1461 0FBB A9 80			 LDA  #<DirMapSectorBuff		; --
-  1462 0FBD 85 E4			 STA   TempZP					; --
-  1463 0FBF 18				 CLC							; --
-  1464 0FC0 A9 14			 LDA  #>DirMapSectorBuff		; --
-  1465 0FC2 65 E3			 ADC   InMapPointer+1			; --
-  1466 0FC4 85 E5			 STA   TempZP+1				; --
-  1467 0FC6 B1 E4		     LDA   (TempZP),Y
-  1468 0FC8 8D EA 10		     STA   blokDanychIO+10
-  1469 0FCB C8			     INY
-  1470 0FCC B1 E4		     LDA   (TempZP),Y
-  1471 0FCE 8D EB 10		     STA   blokDanychIO+11
-  1472 0FD1 0D EA 10		     ORA   blokDanychIO+10 
-  1473 0FD4 F0 64		     BEQ   label75
-  1474 					 ; i zwiekszenie wskaznika mapy o 2
-  1475 0FD6 C8			     INY
-  1476 0FD7 84 E2			 STY   InMapPointer
-  1477 0FD9 D0 02			 BNE   NoIncH				; --
-  1478 0FDB E6 E3			 INC   InMapPointer+1		; --
-  1479 0FDD			NoIncH
-  1480 0FDD AD E5 02		     LDA   MEMTOP
-  1481 0FE0 38			     SEC
-  1482 0FE1 E5 D0		     SBC   CurrentFileInfoBuff
-  1483 0FE3 AD E6 02		     LDA   MEMTOP+1
-  1484 0FE6 E5 D1		     SBC   CurrentFileInfoBuff+1
-  1485 0FE8 F0 50		     BEQ   label75
-  1486 0FEA A4 D0		     LDY   CurrentFileInfoBuff
-  1487 0FEC A6 D1		     LDX   CurrentFileInfoBuff+1
-  1488 0FEE 20 B2 10		     JSR   ReadSector
-  1489 0FF1 A5 D4		     LDA   $D4
-  1490 0FF3 05 D5		     ORA   $D5
-  1491 0FF5 D0 16		     BNE   label79
-  1492 0FF7 A0 03		     LDY  #$03
-  1493 0FF9 B1 D0		     LDA  (CurrentFileInfoBuff),Y
-  1494 0FFB 85 D4		     STA   $D4
-  1495 0FFD C8			     INY
-  1496 0FFE B1 D0		     LDA  (CurrentFileInfoBuff),Y
-  1497 1000 85 D5		     STA   $D5
-  1498 1002 C8			     INY
-  1499 1003 B1 D0		     LDA  (CurrentFileInfoBuff),Y
-  1500 1005 F0 06		     BEQ   label79
-  1501 1007 A9 FF		     LDA  #$FF
-  1502 1009 85 D4		     STA   $D4
-  1503 100B 85 D5		     STA   $D5
-  1504 100D			label79
-  1505 100D A5 D0		     LDA   CurrentFileInfoBuff
-  1506 100F 18			     CLC
-  1507 1010 6D DF 07		     ADC   .adr SecLen	; przed przepisaniem
-  1508 1013 85 D0		     STA   CurrentFileInfoBuff
-  1509 1015 A5 D1		     LDA   CurrentFileInfoBuff+1
-  1510 1017 6D E0 07		     ADC   .adr SecLen+1	; przed przepisaniem
-  1511 101A 85 D1		     STA   CurrentFileInfoBuff+1
-  1512 101C A5 D4		     LDA   $D4
-  1513 101E 38			     SEC
-  1514 101F ED DF 07		     SBC   .adr SecLen	; przed przepisaniem
-  1515 1022 85 D4		     STA   $D4
-  1516 1024 A5 D5		     LDA   $D5
-  1517 1026 ED E0 07		     SBC   .adr SecLen+1	; przed przepisaniem
-  1518 1029 85 D5		     STA   $D5
-  1519 102B B0 80		     BCS   label80
-  1520 102D A5 D0		     LDA   CurrentFileInfoBuff
-  1521 102F 18			     CLC 
-  1522 1030 65 D4		     ADC   $D4 
-  1523 1032 85 D0		     STA   CurrentFileInfoBuff
-  1524 1034 A5 D1		     LDA   CurrentFileInfoBuff+1
-  1525 1036 65 D5		     ADC   $D5
-  1526 1038 85 D1		     STA   CurrentFileInfoBuff+1
-  1527 103A			label75
-  1528 103A A5 DC		     LDA   $DC
-  1529 103C C5 D1		     CMP   CurrentFileInfoBuff+1
-  1530 103E 90 0B		     BCC   label81 
-  1531 1040 D0 17		     BNE   label82
-  1532 1042 A5 DB		     LDA   $DB
-  1533 1044 C5 D0		     CMP   CurrentFileInfoBuff
-  1534 1046 90 03		     BCC   label81
-  1535 1048 D0 0F		     BNE   label82
-  1536 104A 60			     RTS
-  1537 104B			label81
-  1538 104B A5 DB		     LDA   $DB
-  1539 104D 18			     CLC
-  1540 104E 65 DA		     ADC   $DA
-  1541 1050 85 DB		     STA   $DB
-  1542 1052 90 E6		     BCC   label75
-  1543 1054 E6 DC		     INC   $DC
-  1544 1056 4C 3A 10		     JMP   label75
-  1545 1059			label82
-  1546 1059 A5 DB		     LDA   $DB
-  1547 105B 38			     SEC
-  1548 105C E5 DA		     SBC   $DA
-  1549 105E 85 D0		     STA   CurrentFileInfoBuff
-  1550 1060 A5 DC		     LDA   $DC
-  1551 1062 E9 00		     SBC  #$00
-  1552 1064 85 D1		     STA   CurrentFileInfoBuff+1
-  1553 1066 60			     RTS
-  1554 				; odczyt bloku PERCOM i ustalenie rozmiaru pierwszego sektora
-  1555 1067			ReadPERCOM
-  1556 1067 A9 04		     LDA  #$04
-  1557 1069 8D EC 10		     STA   DiskRetryCount
-  1558 106C			ReadPERCOMretry
-  1559 106C A0 90		     LDY  #<blokDanychIO_PERCOM
-  1560 106E A2 10		     LDX  #>blokDanychIO_PERCOM
-  1561 1070 20 88 11		     JSR   Table2DCB
-  1562 1073 20 7D 11		     JSR   GoSIO
-  1563 1076 30 08		     BMI   PercomError
-  1564 					 ; blok odczytany - ustawmy dlugosc 1 sektora
-  1565 1078 AD D1 12			 LDA   PERCOMdata+6
-  1566 107B C9 01			 CMP   #$01			; jesli dlugosc sektora to 256b - pierwszy sektor ustawiamy na 128
-  1567 107D F0 06			 BEQ   Set1Sect128  ; w pozostalych wypadkach zostawiamy jak jest
-  1568 107F 60			     RTS 
-  1569 1080			PercomError
-  1570 1080 CE EC 10		     DEC   DiskRetryCount
-  1571 1083 D0 E7		     BNE   ReadPERCOMretry
-  1572 					 ; blok nieodczytany - dlugosc 1 sektora na $80
-  1573 1085			Set1Sect128
-  1574 1085 A9 00		     LDA  #$00
-  1575 1087 8D D1 12			 STA   PERCOMdata+6
-  1576 108A A9 80			 LDA  #$80
-  1577 108C 8D D2 12			 STA   PERCOMdata+7
-  1578 108F 60				 RTS
-  1579 1090			blokDanychIO_PERCOM
-  1580 1090 31 01 4E 40		     .BY $31,$01,$4E,$40
-  1581 1094 CB 12		     .WO PERCOMdata
-  1582 1096 0A 00 0C 00 01 00	     .BY $0A,$00,12,$00,$01,$00
-  1583 				; wczytuje pierwszy sektor dysku pod adres zawarty w X(starszy) i Y(mlodszy)
-  1584 109C			ReadFirstSect
-  1585 109C A9 01		     LDA  #$01
-  1586 109E 8D EA 10		     STA   blokDanychIO+10 
-  1587 10A1 A9 00		     LDA  #$00 
-  1588 10A3 8D EB 10		     STA   blokDanychIO+11
-  1589 10A6 AD D1 12			 LDA   PERCOMdata+6
-  1590 10A9 8D E9 10			 STA   blokDanychIO+9		; --- obsluga sektorow ponad 256b
-  1591 10AC AD D2 12		     LDA   PERCOMdata+7
-  1592 10AF 4C BB 10		     JMP   ReadSector1
-  1593 				; Wczytuje sektror ustalajac jego dlugosc na podstawie blokDanychIO_Loader (SecLen)
-  1594 				; reszta danych jak nizej (A nie wazne)
-  1595 10B2			ReadSector
-  1596 10B2 AD E0 07		     LDA   .adr SecLen+1		; --- obsluga sektorow ponad 256b
-  1597 10B5 8D E9 10			 STA   blokDanychIO+9			; --- obsluga sektorow ponad 256b
-  1598 10B8 AD DF 07		     LDA   .adr SecLen	; przed przepisaniem
-  1599 10BB			ReadSector1
-  1600 10BB 8D E8 10		     STA   blokDanychIO+8
-  1601 10BE 8E E5 10		     STX   blokDanychIO+5
-  1602 10C1 8C E4 10		     STY   blokDanychIO+4 
-  1603 10C4 A9 04		     LDA  #$04
-  1604 10C6 8D EC 10		     STA   DiskRetryCount
-  1605 10C9			DiskReadRetry
-  1606 10C9 A0 E0		     LDY  #<blokDanychIO
-  1607 10CB A2 10		     LDX  #>blokDanychIO
-  1608 10CD 20 88 11		     JSR   Table2DCB
-  1609 10D0 20 7D 11		     JSR   GoSIO
-  1610 10D3 30 01		     BMI   label85
-  1611 10D5 60			     RTS 
-  1612 10D6			label85
-  1613 10D6 CE EC 10		     DEC   DiskRetryCount
-  1614 10D9 D0 EE		     BNE   DiskReadRetry 
-  1615 10DB 68			     PLA
-  1616 10DC 68			     PLA
-  1617 10DD 4C 97 09		     JMP   ErrorDisplay
-  1618 10E0			blokDanychIO
-  1619 10E0 31 01 52 40		     .BY $31,$01,$52,$40
-  1620 10E4 80 14		     .WO DirMapSectorBuff
-  1621 10E6 0A 00 80 00 01 00	     .BY $0A,$00,$80,$00,$01,$00
-  1622 10EC			DiskRetryCount
-  1623 10EC 00			     .BY $00
-  1624 10ED			PrintXY
-  1625 10ED 68			     PLA
-  1626 10EE 85 C8		     STA   $C8
-  1627 10F0 68			     PLA
-  1628 10F1 85 C9		     STA   $C9
-  1629 10F3 A9 00		     LDA  #$00
-  1630 10F5 85 DF		     STA   $DF
-  1631 10F7 20 6F 11		     JSR   label87
-  1632 10FA 48			     PHA
-  1633 10FB 20 6F 11		     JSR   label87
-  1634 10FE 85 DE		     STA   $DE
-  1635 1100 0A			     ASL
-  1636 1101 0A			     ASL
-  1637 1102 18			     CLC
-  1638 1103 65 DE		     ADC   $DE
-  1639 1105 0A			     ASL
-  1640 1106 0A			     ASL
-  1641 1107 26 DF		     ROL   $DF
-  1642 1109 0A			     ASL
-  1643 110A 26 DF		     ROL   $DF
-  1644 110C 18			     CLC
-  1645 110D 65 58		     ADC   SAVMSC
-  1646 110F 85 DE		     STA   $DE
-  1647 1111 A5 DF		     LDA   $DF
-  1648 1113 65 59		     ADC   SAVMSC+1
-  1649 1115 85 DF		     STA   $DF
-  1650 1117 68			     PLA
-  1651 1118 A8			     TAY
-  1652 1119			label92
-  1653 1119 20 6F 11		     JSR   label87
-  1654 111C C9 00		     CMP  #$00
-  1655 111E F0 48		     BEQ   label88
-  1656 1120 C9 7D		     CMP  #$7D
-  1657 1122 F0 21		     BEQ   label89
-  1658 1124 A2 00		     LDX  #$00
-  1659 1126 86 E0		     STX   $E0 
-  1660 1128 C9 80		     CMP  #$80
-  1661 112A 66 E0		     ROR   $E0
-  1662 112C 29 7F		     AND  #$7F
-  1663 112E C9 20		     CMP  #$20 
-  1664 1130 B0 04		     BCS   label90 
-  1665 1132 09 40		     ORA  #$40
-  1666 1134 D0 07		     BNE   label91
-  1667 1136			label90
-  1668 1136 C9 60		     CMP  #$60
-  1669 1138 B0 03		     BCS   label91
-  1670 113A 38			     SEC
-  1671 113B E9 20		     SBC  #$20
-  1672 113D			label91
-  1673 113D 05 E0		     ORA   $E0
-  1674 113F 91 DE		     STA  ($DE),Y
-  1675 1141 C8			     INY
-  1676 1142 4C 19 11		     JMP   label92 
-  1677 1145			label89
-  1678 1145 98			     TYA
-  1679 1146 48			     PHA
-  1680 1147 A5 58		     LDA   SAVMSC
-  1681 1149 85 E0		     STA   $E0
-  1682 114B A9 03		     LDA  #$03
-  1683 114D AA			     TAX
-  1684 114E 18			     CLC 
-  1685 114F 65 59		     ADC   SAVMSC+1
-  1686 1151 85 E1		     STA   $E1
-  1687 1153 A0 BF		     LDY  #$BF
-  1688 1155 A9 00		     LDA  #$00
-  1689 1157			label93
-  1690 1157 91 E0		     STA  ($E0),Y
-  1691 1159 88			     DEY
-  1692 115A C0 FF		     CPY  #$FF
-  1693 115C D0 F9		     BNE   label93
-  1694 115E C6 E1		     DEC   $E1
-  1695 1160 CA			     DEX
-  1696 1161 10 F4		     BPL   label93
-  1697 1163 68			     PLA
-  1698 1164 A8			     TAY
-  1699 1165 4C 19 11		     JMP   label92
-  1700 1168			label88
-  1701 1168 A5 C9		     LDA   $C9
-  1702 116A 48			     PHA
-  1703 116B A5 C8		     LDA   $C8
-  1704 116D 48			     PHA 
-  1705 116E 60			     RTS
-  1706 116F			label87
-  1707 116F E6 C8		     INC   $C8
-  1708 1171 D0 02		     BNE   label94
-  1709 1173 E6 C9		     INC   $C9
-  1710 1175			label94
-  1711 1175 A2 00		     LDX  #$00 
-  1712 1177 A1 C8		     LDA  ($C8,X) 
-  1713 1179 60			     RTS
-  1714 117A			GoErrorDisp
-  1715 117A 4C 97 09		     JMP   ErrorDisplay
-  1716 				; Skok do Sio lub procedury Turbo
-  1717 117D			GoSIO
-  1718 117D AC 26 09		     LDY  USmode
-  1719 1180 F0 03		     BEQ  StandardSpeed
-  1720 1182 4C 24 08		     JMP  HappyUSMovedProc ; mozna skakac do tej procki
-  1721 1185			StandardSpeed
-  1722 1185 4C 59 E4		     JMP   JSIOINT
-  1723 				; Przepisuje 12 bajtow z adresy podanego w X(starszy) i Y(mlodszy)
-  1724 				; do bloku kontroli transmisji szeregowej DCB
-  1725 1188			Table2DCB
-  1726 1188 8C 91 11		     STY   IOtableAddr+1
-  1727 118B 8E 92 11		     STX   IOtableAddr+2
-  1728 118E A2 0B		     LDX  #$0B
-  1729 1190			IOtableAddr
-  1730 1190 BD FF FF		     LDA   $FFFF,X 
-  1731 1193 9D 00 03		     STA   DDEVIC,X
-  1732 1196 CA			     DEX 
-  1733 1197 10 F7		     BPL   IOtableAddr
-  1734 1199 60			     RTS
-  1735 119A			Close1
-  1736 119A A2 10		     LDX  #$10 
-  1737 119C			CloseX
-  1738 119C A9 0C		     LDA  #$0C
-  1739 119E 9D 42 03		     STA   ICCMD,X
-  1740 11A1 4C 56 E4		     JMP   JCIOMAIN 
-  1741 11A4			GetKey
-  1742 11A4 A2 10		     LDX  #$10
-  1743 11A6 A9 03		     LDA  #$03
-  1744 11A8 9D 42 03		     STA   ICCMD,X 
-  1745 11AB A9 04		     LDA  #$04
-  1746 11AD 9D 4A 03		     STA   ICAX1,X
-  1747 11B0 A9 00		     LDA  #$00
-  1748 11B2 9D 4B 03		     STA   ICAX2,X
-  1749 11B5 9D 49 03		     STA   ICBUFL+1,X
-  1750 11B8 A9 FF		     LDA  #$FF
-  1751 11BA 9D 48 03		     STA   ICBUFL,X
-  1752 11BD A9 EB		     LDA  #<Kdriver
-  1753 11BF 9D 44 03		     STA   ICBUFA,X
-  1754 11C2 A9 11		     LDA  #>Kdriver
-  1755 11C4 9D 45 03		     STA   ICBUFA+1,X
-  1756 11C7 20 56 E4		     JSR   JCIOMAIN
-  1757 11CA 30 1C		     BMI   GKeyError
-  1758 11CC A2 10		     LDX  #$10
-  1759 11CE A9 00		     LDA  #$00
-  1760 11D0 9D 48 03		     STA   ICBUFL,X
-  1761 11D3 9D 49 03		     STA   ICBUFL+1,X
-  1762 11D6 A9 07		     LDA  #$07
-  1763 11D8 9D 42 03		     STA   ICCMD,X
-  1764 11DB 20 56 E4		     JSR   JCIOMAIN
-  1765 11DE 30 08		     BMI   GKeyError
-  1766 11E0 48			     PHA
-  1767 11E1 20 9A 11		     JSR   Close1
-  1768 11E4 30 02		     BMI   GKeyError
-  1769 11E6 68			     PLA 
-  1770 11E7 60			     RTS
-  1771 11E8			GKeyError
-  1772 11E8 4C 7A 11		     JMP   GoErrorDisp
-  1773 11EB			Kdriver
-  1774 11EB 4B 3A 9B		     .BY "K:",$9B
-  1775 11EE			DiscChangeCheck
-  1776 11EE A0 80		     LDY  #<DirMapSectorBuff
-  1777 11F0 A2 14		     LDX  #>DirMapSectorBuff
-  1778 11F2 20 9C 10		     JSR   ReadFirstSect
-  1779 11F5 A2 7F		     LDX  #$7F
-  1780 11F7			label98
-  1781 11F7 BD 00 14		     LDA   FirstSectorBuff,X
-  1782 11FA DD 80 14		     CMP   DirMapSectorBuff,X
-  1783 11FD D0 05		     BNE   ChangedD
-  1784 11FF CA			     DEX 
-  1785 1200 10 F5		     BPL   label98
-  1786 1202 A9 00		     LDA  #$00
-  1787 1204			ChangedD
-  1788 1204 60			     RTS
-  1789 				     ; obsluga gwiazdki
-  1790 					 ; w komorkach $D4 $D5 jest adres linii z pliku MSDOS.DAT zaczynajacej sie od *
-  1791 					 ; w Y jest ) - X moze lepiej nie ruszac :)
-  1792 1205			Asteriks
-  1793 1205 A0 0B		     LDY #11  ; pierwszy HEX za nazwa pliku (czyli pierwsze znaki dlugiej nazwy)
-  1794 1207 20 23 12			 JSR GetHexNumber
-  1795 120A 8D C5 02			 STA COLPF1S   ; literki
-  1796 120D C8			     INY
-  1797 120E 20 23 12			 JSR GetHexNumber
-  1798 1211 8D C6 02			 STA COLPF2S   ; tlo
-  1799 1214 C8				 INY
-  1800 1215 20 23 12			 JSR GetHexNumber
-  1801 1218 8D C8 02			 STA COLBAKS   ; ramka
-  1802 121B C8				 INY
-  1803 121C 20 23 12			 JSR GetHexNumber
-  1804 121F 8D 2A 09			 STA FolderTurbo  ; znacznik turbo (00 bez turbo , 01 tak jak bylo)
-  1805 1222 60				 RTS
-  1806 					 ; pobiera z pod adresu wskazanago przez ($D4),Y dwa kolejne znaki liczby HEX
-  1807 					 ; i zamienia na bajt w A
-  1808 1223			GetHexNumber
-  1809 1223 20 33 12			 JSR GetHEX4bits
-  1810 1226 0A				 ASL
-  1811 1227 0A				 ASL
-  1812 1228 0A				 ASL
-  1813 1229 0A				 ASL
-  1814 122A 85 E4			 STA TempZP ; zmienna potrzebna tylko przy jakims chwilowym obliczeniu, wiec tu sie przyda.
-  1815 122C C8				 INY
-  1816 122D 20 33 12			 JSR GetHEX4bits
-  1817 1230 05 E4		     ORA TempZP
-  1818 1232 60				 RTS
-  1819 1233			GetHEX4bits	 
-  1820 1233 B1 D4			 LDA ($D4),Y
-  1821 1235 38				 SEC
-  1822 1236 E9 30			 SBC #'0'
-  1823 1238 C9 0A			 CMP #$0A ; sprawdzmy czy cyfra
-  1824 123A 90 02			 BCC IsNumber
-  1825 123C E9 07			 SBC #7   ; Carry jest ustawiony, a miedzy 9 i A jest jeszcze 7 znakow
-  1826 123E			IsNumber
-  1827 123E 60			     RTS
-  1828 					 ; Ustawia numer satcji wg A
-  1829 123F			SeTDriveNR
-  1830 123F C9 09			 CMP #$09
-  1831 1241 B0 0F			 BCS SetDriveLetter  ; jesli wieksze lub rowne od 9 to litera zamiast cyfry
-  1832 1243 20 61 12			 JSR SeTblokDanychDrive
-  1833 1246 18			     CLC
-  1834 1247 69 B0		     ADC #'0'+$80   ; dodajemy do kodu cyfry 0
-  1835 1249 8D D9 0A			 STA DriveDisp1
-  1836 124C A9 C4			 LDA #'D'+$80    ; literka D przed numerem napedu
-  1837 124E 8D D8 0A			 STA DriveDisp1-1
-  1838 1251 60			     RTS
-  1839 1252			SeTDriveLetter
-  1840 1252 20 61 12			 JSR SeTblokDanychDrive
-  1841 1255 18			     CLC
-  1842 1256 69 C0		     ADC #'A'+$7F   ; $7f bo to $80 - 1 , a kod litery A trzeba zmniejszyc o 1 i dodac numer napedu
-  1843 1258 8D D9 0A			 STA DriveDisp1
-  1844 125B A9 A0			 LDA #' '+$80    ; literka D przed numerem napedu - tutaj spacja
-  1845 125D 8D D8 0A			 STA DriveDisp1-1
-  1846 1260 60			     RTS
-  1847 1261			SeTblokDanychDrive
-  1848 1261 8D D8 07		     STA .adr blokDanychIO_Loader+1	; przed przepisaniem
-  1849 1264 8D E1 10		     STA blokDanychIO+1
-  1850 1267 8D 63 0F		     STA blokDanychIO_GetUSSpeed+1
-  1851 126A 8D 91 10			 STA blokDanychIO_PERCOM+1
-  1852 126D 60			     RTS
-  1853 				; wyswietlenie na czystm ekranie info zaraz przed rozpoczeciem ladowania pliku	 
-  1854 126E			MEMLOprint
-  1855 126E AD E7 02		     LDA MEMLO
-  1856 1271 48			     PHA 
-  1857 1272 4A			     LSR 
-  1858 1273 4A			     LSR 
-  1859 1274 4A			     LSR
-  1860 1275 4A			     LSR
-  1861 1276 20 2C 09		     JSR   bin2AsciiHex 
-  1862 1279 8D A7 12		     STA   MEMLOvalue+2
-  1863 127C 68			     PLA
-  1864 127D 20 2C 09		     JSR   bin2AsciiHex 
-  1865 1280 8D A8 12		     STA   MEMLOvalue+3
-  1866 1283 AD E8 02		     LDA MEMLO+1
-  1867 1286 48			     PHA 
-  1868 1287 4A			     LSR 
-  1869 1288 4A			     LSR 
-  1870 1289 4A			     LSR
-  1871 128A 4A			     LSR
-  1872 128B 20 2C 09		     JSR   bin2AsciiHex 
-  1873 128E 8D A5 12		     STA   MEMLOvalue
-  1874 1291 68			     PLA
-  1875 1292 20 2C 09		     JSR   bin2AsciiHex 
-  1876 1295 8D A6 12		     STA   MEMLOvalue+1
-  1877 1298 20 ED 10		     JSR PrintXY
-  1878 129B 1C 17		     .BY 28,23
-  1879 129D 4D 45 4D 4C 4F 3A +      .BY "MEMLO: $"
-  1880 12A5			MEMLOvalue
-  1881 12A5 30 30 30 30			 .BY "0000"
-  1882 12A9 00			     .BY $00	 
-  1883 12AA 60				 RTS
-  1884 					 
-  1885 				; Tablica adresow wszystkich rozkazow skokow w procedurze Turbo
-  1886
-  1887 12AB			xjsrTableL
-  1888 12AB 52 66 6C			.BY <[xjsr1+1],<[xjsr2+1],<[xjsr3+1]
-  1889 12AE 72 77			.BY <[xjsr4+1],<[xjsr5+1]
-  1890 12B0 83 8D 99			.BY <[xjsr6+1],<[xjsr7+1],<[xjsr8+1]
-  1891 12B3 9E A6			.BY <[xjsr9+1],<[xjsrA+1]
-  1892 12B5			xjsrTableH
-  1893 12B5 08 08 08			.BY >[xjsr1+1],>[xjsr2+1],>[xjsr3+1]
-  1894 12B8 08 08			.BY >[xjsr4+1],>[xjsr5+1]
-  1895 12BA 08 08 08			.BY >[xjsr6+1],>[xjsr7+1],>[xjsr8+1]
-  1896 12BD 08 08			.BY >[xjsr9+1],>[xjsrA+1]
-  1897 				; miejsce na wyliczony offset o jaki przesuwamy procedure
-  1898 12BF			HappyOffset
-  1899 12BF 00 00		    .WO $0000
-  1900 				; kody gestosci do wyswietlenia na ekranie - takie poziome kreski od chudej do grubej :)
-  1901 12C1			DensityCodes
-  1902 12C1 F3 E4 F1			.by +$80,"sdq"
-  1903 					;.by "SDQ"
-  1904 				    ;.by $0e,$15,$a0
-  1905 12C4			ONtext
-  1906 12C4 CF CE A0		    .BY +$80,"ON "
-  1907 12C7			OFFtext
-  1908 12C7 CF C6 C6		    .BY +$80,"OFF"
-  1909 				; miejsce na przechowanie stanu urzadzen PBI (przez reset)
-  1910 12CA			PDVMASKtemp
-  1911 12CA 00				.BY $00
-  1912 				; miejsce na blok PERCOM
-  1913 12CB			PERCOMdata
-  1914 				; miejsce na tablice trzymajaca numery pierwszych sektorow map bitoeych plikow aktualnie wyswietlanych na liscie
-  1915 = 12D7			FirstSectorsTable=*+12 ; omijamy 12b na percom
-  1916 				     ; zostawiamy $30 bajtow wolnego
-  1917 					 
-  1918 = 1400			FirstSectorBuff=[[>[*+$2f+12]]+1]*$100 ; ($80 bajtow) ustawienie na granicy strony ale po ominieciu $30 i 12 bajtow
-  1919 = 1400			ProgramEnd=FirstSectorBuff
-  1920 = 1480			DirMapSectorBuff=FirstSectorBuff+$80 ; tutaj aktualny sektor mapy sektorow katalogu
-  1921 = 1680			DirSectorBuff=FirstSectorBuff+$280 ; tutaj sektor katalogu
-  1922 12CB			FirstRun
-  1923 				; odnotowujemy stan Shift z Bootowania
-  1924 12CB AD 0F D2		     LDA   SKSTAT 
-  1925 12CE 29 08			 and   #$08
-  1926 12D0 D0 03		     BNE   NoSHIFTboot  
-  1927 12D2 8D 29 09		     STA   BootShift   ; w A jest 0 wiec nie trzeba LDA #0
-  1928 12D5			NoSHIFTboot
-  1929 				;  Sprawdzamy czy jest basic i ustawiamy status na ekranie
-  1930 12D5 AD 01 D3		     LDA PORTB
-  1931 12D8 29 02			 AND #$02
-  1932 12DA D0 0B			 BNE BrakBasica
-  1933 					 ; jest Basic
-  1934 12DC A0 02			 LDY #$2
-  1935 12DE			BASstatprint
-  1936 12DE B9 C4 12			 LDA ONtext,y
-  1937 12E1 99 F4 0A			 STA BASstatus,y
-  1938 12E4 88				 DEY
-  1939 12E5 10 F7			 bpl BASstatprint
-  1940 12E7			BrakBasica	 
-  1941 				;  Sprawdzamy istnienie QMEGa
-  1942 12E7 A0 06		     ldy #$06  ; bo 6 znaków w ROMie testujemy
-  1943 12E9			testQMEGloop
-  1944 12E9 B9 01 C0			 LDA $C001,y
-  1945 12EC D9 1C 13			 CMP QMEGstring,y
-  1946 12EF D0 13			 bne brakQMEGa
-  1947 12F1 88				 dey
-  1948 12F2 10 F5			 bpl testQMEGloop
-  1949 					 ; jest QMEG 
-  1950 12F4 A9 00			 LDA #0
-  1951 12F6 8D 27 09			 STA QMEG
-  1952 12F9 A0 02			 LDY #$2
-  1953 12FB			Qstatprint
-  1954 12FB B9 C4 12			 LDA ONtext,y
-  1955 12FE 99 EC 0A			 STA QMEGstatus,y
-  1956 1301 88				 DEY
-  1957 1302 10 F7			 bpl Qstatprint
-  1958 1304			brakQMEGa
-  1959 				     ; kombinacja z dodaniem identyfikatara i odjeciem 1 - bo tak dziwnie OS robi
-  1960 1304 AD 00 03		     LDA DDEVIC
-  1961 1307 18			     clc	 
-  1962 1308 6D 01 03			 ADC DUNIT
-  1963 130B 38			     sec
-  1964 130C E9 01		     SBC #$01
-  1965 130E 29 0F		     AND #$0F	 ; zapamietanie numeru urzadzenia
-  1966 1310 8D 28 09			 STA BootDrive
-  1967 1313 20 3F 12		     JSR SeTDriveNR
-  1968 1316 20 3B 09			 JSR EditorOpen
-  1969 1319 4C 69 09		     JMP mainprog
-  1970 131C			QMEGstring
-  1971 131C 51 4D 45 47 2D 4F + 	.BY "QMEG-OS",0
-  1972 1324 48 53 20 70 72 6F + 	.BY "HS procedures for Happy/US-Doubler, big sectors loader and compressed file map by Pecus & Pirx 2010-05-26"
-  1973 					;.OPT List
-  1974 					
-  1975
-  1976 				     ;org $02e0
-  1977 				     ;.WO LoaderGo
-  1978 				     
-  1979 				    ; .WO START 
-  1980 					; na koniec pliku dwa bajty $00 bez naglowka (dla bootloadera)
-  1981 				;    OPT h-
-  1982 				;	org $0000
-  1983 				;	.WO $0000
-  1984 138D			EndOfCode
-  1984 = 0080			MAPCOUNTER
-  1984 = 0082			COMPRESSEDMAPCOUNTER
-  1984 = 0084			MAPCOUNTERMEM
-  1984 = 0086			PREVFILESECTOR
-  1984 = 0088			MAPPOSITIONMEM
-  1984 = 008A			SECTOROFFSET
-  1984 = 008C			SECTORSCOUNTER
+  1412
+  1413 				; Rozkaz DCB "?" pobierrajacy predkosc dla Happy i US-Doubler
+  1414 0F62			blokDanychIO_GetUSSpeed
+  1415 0F62 31 01 3F 40		     .BY $31,$01,"?",$40
+  1416 0F66 3C 08		     .WO HappySpeed
+  1417 0F68 07 00 01 00 00 0A	     .BY $07,$00,$01,$00,$00,$0A
+  1418 0F6E			DirMapEnd
+  1419 0F6E 4C 3A 10		     JMP   label75
+  1420 0F71			label39
+  1421 0F71 85 DA		     STA   $DA 
+  1422 0F73 A5 D0		     LDA   CurrentFileInfoBuff
+  1423 0F75 85 DB		     STA   $DB
+  1424 0F77 A5 D1		     LDA   CurrentFileInfoBuff+1
+  1425 0F79 85 DC		     STA   $DC
+  1426 0F7B 20 EE 11		     JSR   DiscChangeCheck   ; Sprawdzenie czy w miedzyczasie nie zostala zmieniona dyskietka
+  1427 0F7E F0 05		     BEQ   DiscNotChanged2
+  1428 0F80 68			     PLA
+  1429 0F81 68			     PLA
+  1430 0F82 4C D8 09		     JMP   ReadMainDir
+  1431 0F85			DiscNotChanged2
+  1432 				     ; odczyt sektora mapy wskazywanego przez DirMapSec
+  1433 0F85 A5 D2		     LDA   DirMapSect
+  1434 0F87 8D EA 10		     STA   blokDanychIO+10
+  1435 0F8A A5 D3		     LDA   DirMapSect+1
+  1436 0F8C 8D EB 10		     STA   blokDanychIO+11
+  1437 0F8F 0D EA 10		     ORA   blokDanychIO+10
+  1438 0F92 F0 DA		     BEQ   DirMapEnd
+  1439 0F94 A2 14		     LDX  #>DirMapSectorBuff
+  1440 0F96 A0 80		     LDY  #<DirMapSectorBuff
+  1441 0F98 20 B2 10		     JSR   ReadSector
+  1442 					 ; zostal wczytany kolejny sektor mapy nalezy wiec zapamietac we wskazniku DirMapSec
+  1443 					 ; numer nastepnego sektora mapy. To 2 pierwsze bajty z bufora na sektor mapy
+  1444 0F9B AD 80 14		     LDA   DirMapSectorBuff
+  1445 0F9E 85 D2		     STA   DirMapSect
+  1446 0FA0 AD 81 14		     LDA   DirMapSectorBuff+1
+  1447 0FA3 85 D3		     STA   DirMapSect+1
+  1448 0FA5 A9 04		     LDA  #$04 
+  1449 0FA7 85 E2			 STA   InMapPointer		; --
+  1450 0FA9 A9 00			 LDA  #$00					; --
+  1451 0FAB 85 E3			 STA   InMapPointer+1		; --
+  1452 0FAD			label80
+  1453 0FAD A4 E2			 LDY   InMapPointer		; --
+  1454 0FAF CC DF 07		     CPY   .adr SecLen	; przed przepisaniem
+  1455 0FB2 D0 07			 BNE   NoNextMapSector		; --
+  1456 0FB4 A5 E3			 LDA   InMapPointer+1			; --
+  1457 0FB6 CD E0 07			 CMP   .adr Seclen+1	; --
+  1458 0FB9 F0 CA		     BEQ   DiscNotChanged2
+  1459 0FBB			NoNextMapSector
+  1460 					; pobranie numeru nastepnego sektora katalogu z mapy sektorow
+  1461 					 ; tymczasowy adrez na ZP
+  1462 0FBB A9 80			 LDA  #<DirMapSectorBuff		; --
+  1463 0FBD 85 E4			 STA   TempZP					; --
+  1464 0FBF 18				 CLC							; --
+  1465 0FC0 A9 14			 LDA  #>DirMapSectorBuff		; --
+  1466 0FC2 65 E3			 ADC   InMapPointer+1			; --
+  1467 0FC4 85 E5			 STA   TempZP+1				; --
+  1468 0FC6 B1 E4		     LDA   (TempZP),Y
+  1469 0FC8 8D EA 10		     STA   blokDanychIO+10
+  1470 0FCB C8			     INY
+  1471 0FCC B1 E4		     LDA   (TempZP),Y
+  1472 0FCE 8D EB 10		     STA   blokDanychIO+11
+  1473 0FD1 0D EA 10		     ORA   blokDanychIO+10 
+  1474 0FD4 F0 64		     BEQ   label75
+  1475 					 ; i zwiekszenie wskaznika mapy o 2
+  1476 0FD6 C8			     INY
+  1477 0FD7 84 E2			 STY   InMapPointer
+  1478 0FD9 D0 02			 BNE   NoIncH				; --
+  1479 0FDB E6 E3			 INC   InMapPointer+1		; --
+  1480 0FDD			NoIncH
+  1481 0FDD AD E5 02		     LDA   MEMTOP
+  1482 0FE0 38			     SEC
+  1483 0FE1 E5 D0		     SBC   CurrentFileInfoBuff
+  1484 0FE3 AD E6 02		     LDA   MEMTOP+1
+  1485 0FE6 E5 D1		     SBC   CurrentFileInfoBuff+1
+  1486 0FE8 F0 50		     BEQ   label75
+  1487 0FEA A4 D0		     LDY   CurrentFileInfoBuff
+  1488 0FEC A6 D1		     LDX   CurrentFileInfoBuff+1
+  1489 0FEE 20 B2 10		     JSR   ReadSector
+  1490 0FF1 A5 D4		     LDA   $D4
+  1491 0FF3 05 D5		     ORA   $D5
+  1492 0FF5 D0 16		     BNE   label79
+  1493 0FF7 A0 03		     LDY  #$03
+  1494 0FF9 B1 D0		     LDA  (CurrentFileInfoBuff),Y
+  1495 0FFB 85 D4		     STA   $D4
+  1496 0FFD C8			     INY
+  1497 0FFE B1 D0		     LDA  (CurrentFileInfoBuff),Y
+  1498 1000 85 D5		     STA   $D5
+  1499 1002 C8			     INY
+  1500 1003 B1 D0		     LDA  (CurrentFileInfoBuff),Y
+  1501 1005 F0 06		     BEQ   label79
+  1502 1007 A9 FF		     LDA  #$FF
+  1503 1009 85 D4		     STA   $D4
+  1504 100B 85 D5		     STA   $D5
+  1505 100D			label79
+  1506 100D A5 D0		     LDA   CurrentFileInfoBuff
+  1507 100F 18			     CLC
+  1508 1010 6D DF 07		     ADC   .adr SecLen	; przed przepisaniem
+  1509 1013 85 D0		     STA   CurrentFileInfoBuff
+  1510 1015 A5 D1		     LDA   CurrentFileInfoBuff+1
+  1511 1017 6D E0 07		     ADC   .adr SecLen+1	; przed przepisaniem
+  1512 101A 85 D1		     STA   CurrentFileInfoBuff+1
+  1513 101C A5 D4		     LDA   $D4
+  1514 101E 38			     SEC
+  1515 101F ED DF 07		     SBC   .adr SecLen	; przed przepisaniem
+  1516 1022 85 D4		     STA   $D4
+  1517 1024 A5 D5		     LDA   $D5
+  1518 1026 ED E0 07		     SBC   .adr SecLen+1	; przed przepisaniem
+  1519 1029 85 D5		     STA   $D5
+  1520 102B B0 80		     BCS   label80
+  1521 102D A5 D0		     LDA   CurrentFileInfoBuff
+  1522 102F 18			     CLC 
+  1523 1030 65 D4		     ADC   $D4 
+  1524 1032 85 D0		     STA   CurrentFileInfoBuff
+  1525 1034 A5 D1		     LDA   CurrentFileInfoBuff+1
+  1526 1036 65 D5		     ADC   $D5
+  1527 1038 85 D1		     STA   CurrentFileInfoBuff+1
+  1528 103A			label75
+  1529 103A A5 DC		     LDA   $DC
+  1530 103C C5 D1		     CMP   CurrentFileInfoBuff+1
+  1531 103E 90 0B		     BCC   label81 
+  1532 1040 D0 17		     BNE   label82
+  1533 1042 A5 DB		     LDA   $DB
+  1534 1044 C5 D0		     CMP   CurrentFileInfoBuff
+  1535 1046 90 03		     BCC   label81
+  1536 1048 D0 0F		     BNE   label82
+  1537 104A 60			     RTS
+  1538 104B			label81
+  1539 104B A5 DB		     LDA   $DB
+  1540 104D 18			     CLC
+  1541 104E 65 DA		     ADC   $DA
+  1542 1050 85 DB		     STA   $DB
+  1543 1052 90 E6		     BCC   label75
+  1544 1054 E6 DC		     INC   $DC
+  1545 1056 4C 3A 10		     JMP   label75
+  1546 1059			label82
+  1547 1059 A5 DB		     LDA   $DB
+  1548 105B 38			     SEC
+  1549 105C E5 DA		     SBC   $DA
+  1550 105E 85 D0		     STA   CurrentFileInfoBuff
+  1551 1060 A5 DC		     LDA   $DC
+  1552 1062 E9 00		     SBC  #$00
+  1553 1064 85 D1		     STA   CurrentFileInfoBuff+1
+  1554 1066 60			     RTS
+  1555 				; odczyt bloku PERCOM i ustalenie rozmiaru pierwszego sektora
+  1556 1067			ReadPERCOM
+  1557 1067 A9 04		     LDA  #$04
+  1558 1069 8D EC 10		     STA   DiskRetryCount
+  1559 106C			ReadPERCOMretry
+  1560 106C A0 90		     LDY  #<blokDanychIO_PERCOM
+  1561 106E A2 10		     LDX  #>blokDanychIO_PERCOM
+  1562 1070 20 88 11		     JSR   Table2DCB
+  1563 1073 20 7D 11		     JSR   GoSIO
+  1564 1076 30 08		     BMI   PercomError
+  1565 					 ; blok odczytany - ustawmy dlugosc 1 sektora
+  1566 1078 AD D1 12			 LDA   PERCOMdata+6
+  1567 107B C9 01			 CMP   #$01			; jesli dlugosc sektora to 256b - pierwszy sektor ustawiamy na 128
+  1568 107D F0 06			 BEQ   Set1Sect128  ; w pozostalych wypadkach zostawiamy jak jest
+  1569 107F 60			     RTS 
+  1570 1080			PercomError
+  1571 1080 CE EC 10		     DEC   DiskRetryCount
+  1572 1083 D0 E7		     BNE   ReadPERCOMretry
+  1573 					 ; blok nieodczytany - dlugosc 1 sektora na $80
+  1574 1085			Set1Sect128
+  1575 1085 A9 00		     LDA  #$00
+  1576 1087 8D D1 12			 STA   PERCOMdata+6
+  1577 108A A9 80			 LDA  #$80
+  1578 108C 8D D2 12			 STA   PERCOMdata+7
+  1579 108F 60				 RTS
+  1580 1090			blokDanychIO_PERCOM
+  1581 1090 31 01 4E 40		     .BY $31,$01,$4E,$40
+  1582 1094 CB 12		     .WO PERCOMdata
+  1583 1096 0A 00 0C 00 01 00	     .BY $0A,$00,12,$00,$01,$00
+  1584 				; wczytuje pierwszy sektor dysku pod adres zawarty w X(starszy) i Y(mlodszy)
+  1585 109C			ReadFirstSect
+  1586 109C A9 01		     LDA  #$01
+  1587 109E 8D EA 10		     STA   blokDanychIO+10 
+  1588 10A1 A9 00		     LDA  #$00 
+  1589 10A3 8D EB 10		     STA   blokDanychIO+11
+  1590 10A6 AD D1 12			 LDA   PERCOMdata+6
+  1591 10A9 8D E9 10			 STA   blokDanychIO+9		; --- obsluga sektorow ponad 256b
+  1592 10AC AD D2 12		     LDA   PERCOMdata+7
+  1593 10AF 4C BB 10		     JMP   ReadSector1
+  1594 				; Wczytuje sektror ustalajac jego dlugosc na podstawie blokDanychIO_Loader (SecLen)
+  1595 				; reszta danych jak nizej (A nie wazne)
+  1596 10B2			ReadSector
+  1597 10B2 AD E0 07		     LDA   .adr SecLen+1		; --- obsluga sektorow ponad 256b
+  1598 10B5 8D E9 10			 STA   blokDanychIO+9			; --- obsluga sektorow ponad 256b
+  1599 10B8 AD DF 07		     LDA   .adr SecLen	; przed przepisaniem
+  1600 10BB			ReadSector1
+  1601 10BB 8D E8 10		     STA   blokDanychIO+8
+  1602 10BE 8E E5 10		     STX   blokDanychIO+5
+  1603 10C1 8C E4 10		     STY   blokDanychIO+4 
+  1604 10C4 A9 04		     LDA  #$04
+  1605 10C6 8D EC 10		     STA   DiskRetryCount
+  1606 10C9			DiskReadRetry
+  1607 10C9 A0 E0		     LDY  #<blokDanychIO
+  1608 10CB A2 10		     LDX  #>blokDanychIO
+  1609 10CD 20 88 11		     JSR   Table2DCB
+  1610 10D0 20 7D 11		     JSR   GoSIO
+  1611 10D3 30 01		     BMI   label85
+  1612 10D5 60			     RTS 
+  1613 10D6			label85
+  1614 10D6 CE EC 10		     DEC   DiskRetryCount
+  1615 10D9 D0 EE		     BNE   DiskReadRetry 
+  1616 10DB 68			     PLA
+  1617 10DC 68			     PLA
+  1618 10DD 4C 97 09		     JMP   ErrorDisplay
+  1619 10E0			blokDanychIO
+  1620 10E0 31 01 52 40		     .BY $31,$01,$52,$40
+  1621 10E4 80 14		     .WO DirMapSectorBuff
+  1622 10E6 0A 00 80 00 01 00	     .BY $0A,$00,$80,$00,$01,$00
+  1623 10EC			DiskRetryCount
+  1624 10EC 00			     .BY $00
+  1625 10ED			PrintXY
+  1626 10ED 68			     PLA
+  1627 10EE 85 C8		     STA   $C8
+  1628 10F0 68			     PLA
+  1629 10F1 85 C9		     STA   $C9
+  1630 10F3 A9 00		     LDA  #$00
+  1631 10F5 85 DF		     STA   $DF
+  1632 10F7 20 6F 11		     JSR   label87
+  1633 10FA 48			     PHA
+  1634 10FB 20 6F 11		     JSR   label87
+  1635 10FE 85 DE		     STA   $DE
+  1636 1100 0A			     ASL
+  1637 1101 0A			     ASL
+  1638 1102 18			     CLC
+  1639 1103 65 DE		     ADC   $DE
+  1640 1105 0A			     ASL
+  1641 1106 0A			     ASL
+  1642 1107 26 DF		     ROL   $DF
+  1643 1109 0A			     ASL
+  1644 110A 26 DF		     ROL   $DF
+  1645 110C 18			     CLC
+  1646 110D 65 58		     ADC   SAVMSC
+  1647 110F 85 DE		     STA   $DE
+  1648 1111 A5 DF		     LDA   $DF
+  1649 1113 65 59		     ADC   SAVMSC+1
+  1650 1115 85 DF		     STA   $DF
+  1651 1117 68			     PLA
+  1652 1118 A8			     TAY
+  1653 1119			label92
+  1654 1119 20 6F 11		     JSR   label87
+  1655 111C C9 00		     CMP  #$00
+  1656 111E F0 48		     BEQ   label88
+  1657 1120 C9 7D		     CMP  #$7D
+  1658 1122 F0 21		     BEQ   label89
+  1659 1124 A2 00		     LDX  #$00
+  1660 1126 86 E0		     STX   $E0 
+  1661 1128 C9 80		     CMP  #$80
+  1662 112A 66 E0		     ROR   $E0
+  1663 112C 29 7F		     AND  #$7F
+  1664 112E C9 20		     CMP  #$20 
+  1665 1130 B0 04		     BCS   label90 
+  1666 1132 09 40		     ORA  #$40
+  1667 1134 D0 07		     BNE   label91
+  1668 1136			label90
+  1669 1136 C9 60		     CMP  #$60
+  1670 1138 B0 03		     BCS   label91
+  1671 113A 38			     SEC
+  1672 113B E9 20		     SBC  #$20
+  1673 113D			label91
+  1674 113D 05 E0		     ORA   $E0
+  1675 113F 91 DE		     STA  ($DE),Y
+  1676 1141 C8			     INY
+  1677 1142 4C 19 11		     JMP   label92 
+  1678 1145			label89
+  1679 1145 98			     TYA
+  1680 1146 48			     PHA
+  1681 1147 A5 58		     LDA   SAVMSC
+  1682 1149 85 E0		     STA   $E0
+  1683 114B A9 03		     LDA  #$03
+  1684 114D AA			     TAX
+  1685 114E 18			     CLC 
+  1686 114F 65 59		     ADC   SAVMSC+1
+  1687 1151 85 E1		     STA   $E1
+  1688 1153 A0 BF		     LDY  #$BF
+  1689 1155 A9 00		     LDA  #$00
+  1690 1157			label93
+  1691 1157 91 E0		     STA  ($E0),Y
+  1692 1159 88			     DEY
+  1693 115A C0 FF		     CPY  #$FF
+  1694 115C D0 F9		     BNE   label93
+  1695 115E C6 E1		     DEC   $E1
+  1696 1160 CA			     DEX
+  1697 1161 10 F4		     BPL   label93
+  1698 1163 68			     PLA
+  1699 1164 A8			     TAY
+  1700 1165 4C 19 11		     JMP   label92
+  1701 1168			label88
+  1702 1168 A5 C9		     LDA   $C9
+  1703 116A 48			     PHA
+  1704 116B A5 C8		     LDA   $C8
+  1705 116D 48			     PHA 
+  1706 116E 60			     RTS
+  1707 116F			label87
+  1708 116F E6 C8		     INC   $C8
+  1709 1171 D0 02		     BNE   label94
+  1710 1173 E6 C9		     INC   $C9
+  1711 1175			label94
+  1712 1175 A2 00		     LDX  #$00 
+  1713 1177 A1 C8		     LDA  ($C8,X) 
+  1714 1179 60			     RTS
+  1715 117A			GoErrorDisp
+  1716 117A 4C 97 09		     JMP   ErrorDisplay
+  1717 				; Skok do Sio lub procedury Turbo
+  1718 117D			GoSIO
+  1719 117D AC 26 09		     LDY  USmode
+  1720 1180 F0 03		     BEQ  StandardSpeed
+  1721 1182 4C 24 08		     JMP  HappyUSMovedProc ; mozna skakac do tej procki
+  1722 1185			StandardSpeed
+  1723 1185 4C 59 E4		     JMP   JSIOINT
+  1724 				; Przepisuje 12 bajtow z adresy podanego w X(starszy) i Y(mlodszy)
+  1725 				; do bloku kontroli transmisji szeregowej DCB
+  1726 1188			Table2DCB
+  1727 1188 8C 91 11		     STY   IOtableAddr+1
+  1728 118B 8E 92 11		     STX   IOtableAddr+2
+  1729 118E A2 0B		     LDX  #$0B
+  1730 1190			IOtableAddr
+  1731 1190 BD FF FF		     LDA   $FFFF,X 
+  1732 1193 9D 00 03		     STA   DDEVIC,X
+  1733 1196 CA			     DEX 
+  1734 1197 10 F7		     BPL   IOtableAddr
+  1735 1199 60			     RTS
+  1736 119A			Close1
+  1737 119A A2 10		     LDX  #$10 
+  1738 119C			CloseX
+  1739 119C A9 0C		     LDA  #$0C
+  1740 119E 9D 42 03		     STA   ICCMD,X
+  1741 11A1 4C 56 E4		     JMP   JCIOMAIN 
+  1742 11A4			GetKey
+  1743 11A4 A2 10		     LDX  #$10
+  1744 11A6 A9 03		     LDA  #$03
+  1745 11A8 9D 42 03		     STA   ICCMD,X 
+  1746 11AB A9 04		     LDA  #$04
+  1747 11AD 9D 4A 03		     STA   ICAX1,X
+  1748 11B0 A9 00		     LDA  #$00
+  1749 11B2 9D 4B 03		     STA   ICAX2,X
+  1750 11B5 9D 49 03		     STA   ICBUFL+1,X
+  1751 11B8 A9 FF		     LDA  #$FF
+  1752 11BA 9D 48 03		     STA   ICBUFL,X
+  1753 11BD A9 EB		     LDA  #<Kdriver
+  1754 11BF 9D 44 03		     STA   ICBUFA,X
+  1755 11C2 A9 11		     LDA  #>Kdriver
+  1756 11C4 9D 45 03		     STA   ICBUFA+1,X
+  1757 11C7 20 56 E4		     JSR   JCIOMAIN
+  1758 11CA 30 1C		     BMI   GKeyError
+  1759 11CC A2 10		     LDX  #$10
+  1760 11CE A9 00		     LDA  #$00
+  1761 11D0 9D 48 03		     STA   ICBUFL,X
+  1762 11D3 9D 49 03		     STA   ICBUFL+1,X
+  1763 11D6 A9 07		     LDA  #$07
+  1764 11D8 9D 42 03		     STA   ICCMD,X
+  1765 11DB 20 56 E4		     JSR   JCIOMAIN
+  1766 11DE 30 08		     BMI   GKeyError
+  1767 11E0 48			     PHA
+  1768 11E1 20 9A 11		     JSR   Close1
+  1769 11E4 30 02		     BMI   GKeyError
+  1770 11E6 68			     PLA 
+  1771 11E7 60			     RTS
+  1772 11E8			GKeyError
+  1773 11E8 4C 7A 11		     JMP   GoErrorDisp
+  1774 11EB			Kdriver
+  1775 11EB 4B 3A 9B		     .BY "K:",$9B
+  1776 11EE			DiscChangeCheck
+  1777 11EE A0 80		     LDY  #<DirMapSectorBuff
+  1778 11F0 A2 14		     LDX  #>DirMapSectorBuff
+  1779 11F2 20 9C 10		     JSR   ReadFirstSect
+  1780 11F5 A2 7F		     LDX  #$7F
+  1781 11F7			label98
+  1782 11F7 BD 00 14		     LDA   FirstSectorBuff,X
+  1783 11FA DD 80 14		     CMP   DirMapSectorBuff,X
+  1784 11FD D0 05		     BNE   ChangedD
+  1785 11FF CA			     DEX 
+  1786 1200 10 F5		     BPL   label98
+  1787 1202 A9 00		     LDA  #$00
+  1788 1204			ChangedD
+  1789 1204 60			     RTS
+  1790 				     ; obsluga gwiazdki
+  1791 					 ; w komorkach $D4 $D5 jest adres linii z pliku MSDOS.DAT zaczynajacej sie od *
+  1792 					 ; w Y jest ) - X moze lepiej nie ruszac :)
+  1793 1205			Asteriks
+  1794 1205 A0 0B		     LDY #11  ; pierwszy HEX za nazwa pliku (czyli pierwsze znaki dlugiej nazwy)
+  1795 1207 20 23 12			 JSR GetHexNumber
+  1796 120A 8D C5 02			 STA COLPF1S   ; literki
+  1797 120D C8			     INY
+  1798 120E 20 23 12			 JSR GetHexNumber
+  1799 1211 8D C6 02			 STA COLPF2S   ; tlo
+  1800 1214 C8				 INY
+  1801 1215 20 23 12			 JSR GetHexNumber
+  1802 1218 8D C8 02			 STA COLBAKS   ; ramka
+  1803 121B C8				 INY
+  1804 121C 20 23 12			 JSR GetHexNumber
+  1805 121F 8D 2A 09			 STA FolderTurbo  ; znacznik turbo (00 bez turbo , 01 tak jak bylo)
+  1806 1222 60				 RTS
+  1807 					 ; pobiera z pod adresu wskazanago przez ($D4),Y dwa kolejne znaki liczby HEX
+  1808 					 ; i zamienia na bajt w A
+  1809 1223			GetHexNumber
+  1810 1223 20 33 12			 JSR GetHEX4bits
+  1811 1226 0A				 ASL
+  1812 1227 0A				 ASL
+  1813 1228 0A				 ASL
+  1814 1229 0A				 ASL
+  1815 122A 85 E4			 STA TempZP ; zmienna potrzebna tylko przy jakims chwilowym obliczeniu, wiec tu sie przyda.
+  1816 122C C8				 INY
+  1817 122D 20 33 12			 JSR GetHEX4bits
+  1818 1230 05 E4		     ORA TempZP
+  1819 1232 60				 RTS
+  1820 1233			GetHEX4bits	 
+  1821 1233 B1 D4			 LDA ($D4),Y
+  1822 1235 38				 SEC
+  1823 1236 E9 30			 SBC #'0'
+  1824 1238 C9 0A			 CMP #$0A ; sprawdzmy czy cyfra
+  1825 123A 90 02			 BCC IsNumber
+  1826 123C E9 07			 SBC #7   ; Carry jest ustawiony, a miedzy 9 i A jest jeszcze 7 znakow
+  1827 123E			IsNumber
+  1828 123E 60			     RTS
+  1829 					 ; Ustawia numer satcji wg A
+  1830 123F			SeTDriveNR
+  1831 123F C9 09			 CMP #$09
+  1832 1241 B0 0F			 BCS SetDriveLetter  ; jesli wieksze lub rowne od 9 to litera zamiast cyfry
+  1833 1243 20 61 12			 JSR SeTblokDanychDrive
+  1834 1246 18			     CLC
+  1835 1247 69 B0		     ADC #'0'+$80   ; dodajemy do kodu cyfry 0
+  1836 1249 8D D9 0A			 STA DriveDisp1
+  1837 124C A9 C4			 LDA #'D'+$80    ; literka D przed numerem napedu
+  1838 124E 8D D8 0A			 STA DriveDisp1-1
+  1839 1251 60			     RTS
+  1840 1252			SeTDriveLetter
+  1841 1252 20 61 12			 JSR SeTblokDanychDrive
+  1842 1255 18			     CLC
+  1843 1256 69 C0		     ADC #'A'+$7F   ; $7f bo to $80 - 1 , a kod litery A trzeba zmniejszyc o 1 i dodac numer napedu
+  1844 1258 8D D9 0A			 STA DriveDisp1
+  1845 125B A9 A0			 LDA #' '+$80    ; literka D przed numerem napedu - tutaj spacja
+  1846 125D 8D D8 0A			 STA DriveDisp1-1
+  1847 1260 60			     RTS
+  1848 1261			SeTblokDanychDrive
+  1849 1261 8D D8 07		     STA .adr blokDanychIO_Loader+1	; przed przepisaniem
+  1850 1264 8D E1 10		     STA blokDanychIO+1
+  1851 1267 8D 63 0F		     STA blokDanychIO_GetUSSpeed+1
+  1852 126A 8D 91 10			 STA blokDanychIO_PERCOM+1
+  1853 126D 60			     RTS
+  1854 				; wyswietlenie na czystm ekranie info zaraz przed rozpoczeciem ladowania pliku	 
+  1855 126E			MEMLOprint
+  1856 126E AD E7 02		     LDA MEMLO
+  1857 1271 48			     PHA 
+  1858 1272 4A			     LSR 
+  1859 1273 4A			     LSR 
+  1860 1274 4A			     LSR
+  1861 1275 4A			     LSR
+  1862 1276 20 2C 09		     JSR   bin2AsciiHex 
+  1863 1279 8D A7 12		     STA   MEMLOvalue+2
+  1864 127C 68			     PLA
+  1865 127D 20 2C 09		     JSR   bin2AsciiHex 
+  1866 1280 8D A8 12		     STA   MEMLOvalue+3
+  1867 1283 AD E8 02		     LDA MEMLO+1
+  1868 1286 48			     PHA 
+  1869 1287 4A			     LSR 
+  1870 1288 4A			     LSR 
+  1871 1289 4A			     LSR
+  1872 128A 4A			     LSR
+  1873 128B 20 2C 09		     JSR   bin2AsciiHex 
+  1874 128E 8D A5 12		     STA   MEMLOvalue
+  1875 1291 68			     PLA
+  1876 1292 20 2C 09		     JSR   bin2AsciiHex 
+  1877 1295 8D A6 12		     STA   MEMLOvalue+1
+  1878 1298 20 ED 10		     JSR PrintXY
+  1879 129B 1C 17		     .BY 28,23
+  1880 129D 4D 45 4D 4C 4F 3A +      .BY "MEMLO: $"
+  1881 12A5			MEMLOvalue
+  1882 12A5 30 30 30 30			 .BY "0000"
+  1883 12A9 00			     .BY $00	 
+  1884 12AA 60				 RTS
+  1885 					 
+  1886 				; Tablica adresow wszystkich rozkazow skokow w procedurze Turbo
+  1887
+  1888 12AB			xjsrTableL
+  1889 12AB 52 66 6C			.BY <[xjsr1+1],<[xjsr2+1],<[xjsr3+1]
+  1890 12AE 72 77			.BY <[xjsr4+1],<[xjsr5+1]
+  1891 12B0 83 8D 99			.BY <[xjsr6+1],<[xjsr7+1],<[xjsr8+1]
+  1892 12B3 9E A6			.BY <[xjsr9+1],<[xjsrA+1]
+  1893 12B5			xjsrTableH
+  1894 12B5 08 08 08			.BY >[xjsr1+1],>[xjsr2+1],>[xjsr3+1]
+  1895 12B8 08 08			.BY >[xjsr4+1],>[xjsr5+1]
+  1896 12BA 08 08 08			.BY >[xjsr6+1],>[xjsr7+1],>[xjsr8+1]
+  1897 12BD 08 08			.BY >[xjsr9+1],>[xjsrA+1]
+  1898 				; miejsce na wyliczony offset o jaki przesuwamy procedure
+  1899 12BF			HappyOffset
+  1900 12BF 00 00		    .WO $0000
+  1901 				; kody gestosci do wyswietlenia na ekranie - takie poziome kreski od chudej do grubej :)
+  1902 12C1			DensityCodes
+  1903 12C1 F3 E4 F1			.by +$80,"sdq"
+  1904 					;.by "SDQ"
+  1905 				    ;.by $0e,$15,$a0
+  1906 12C4			ONtext
+  1907 12C4 CF CE A0		    .BY +$80,"ON "
+  1908 12C7			OFFtext
+  1909 12C7 CF C6 C6		    .BY +$80,"OFF"
+  1910 				; miejsce na przechowanie stanu urzadzen PBI (przez reset)
+  1911 12CA			PDVMASKtemp
+  1912 12CA 00				.BY $00
+  1913 				; miejsce na blok PERCOM
+  1914 12CB			PERCOMdata
+  1915 				; miejsce na tablice trzymajaca numery pierwszych sektorow map bitoeych plikow aktualnie wyswietlanych na liscie
+  1916 = 12D7			FirstSectorsTable=*+12 ; omijamy 12b na percom
+  1917 				     ; zostawiamy $30 bajtow wolnego
+  1918 					 
+  1919 = 1400			FirstSectorBuff=[[>[*+$2f+12]]+1]*$100 ; ($80 bajtow) ustawienie na granicy strony ale po ominieciu $30 i 12 bajtow
+  1920 = 1400			ProgramEnd=FirstSectorBuff
+  1921 = 1480			DirMapSectorBuff=FirstSectorBuff+$80 ; tutaj aktualny sektor mapy sektorow katalogu
+  1922 = 1680			DirSectorBuff=FirstSectorBuff+$280 ; tutaj sektor katalogu
+  1923 12CB			FirstRun
+  1924 				; odnotowujemy stan Shift z Bootowania
+  1925 12CB AD 0F D2		     LDA   SKSTAT 
+  1926 12CE 29 08			 and   #$08
+  1927 12D0 D0 03		     BNE   NoSHIFTboot  
+  1928 12D2 8D 29 09		     STA   BootShift   ; w A jest 0 wiec nie trzeba LDA #0
+  1929 12D5			NoSHIFTboot
+  1930 				;  Sprawdzamy czy jest basic i ustawiamy status na ekranie
+  1931 12D5 AD 01 D3		     LDA PORTB
+  1932 12D8 29 02			 AND #$02
+  1933 12DA D0 0B			 BNE BrakBasica
+  1934 					 ; jest Basic
+  1935 12DC A0 02			 LDY #$2
+  1936 12DE			BASstatprint
+  1937 12DE B9 C4 12			 LDA ONtext,y
+  1938 12E1 99 F4 0A			 STA BASstatus,y
+  1939 12E4 88				 DEY
+  1940 12E5 10 F7			 bpl BASstatprint
+  1941 12E7			BrakBasica	 
+  1942 				;  Sprawdzamy istnienie QMEGa
+  1943 12E7 A0 06		     ldy #$06  ; bo 6 znaków w ROMie testujemy
+  1944 12E9			testQMEGloop
+  1945 12E9 B9 01 C0			 LDA $C001,y
+  1946 12EC D9 1C 13			 CMP QMEGstring,y
+  1947 12EF D0 13			 bne brakQMEGa
+  1948 12F1 88				 dey
+  1949 12F2 10 F5			 bpl testQMEGloop
+  1950 					 ; jest QMEG 
+  1951 12F4 A9 00			 LDA #0
+  1952 12F6 8D 27 09			 STA QMEG
+  1953 12F9 A0 02			 LDY #$2
+  1954 12FB			Qstatprint
+  1955 12FB B9 C4 12			 LDA ONtext,y
+  1956 12FE 99 EC 0A			 STA QMEGstatus,y
+  1957 1301 88				 DEY
+  1958 1302 10 F7			 bpl Qstatprint
+  1959 1304			brakQMEGa
+  1960 				     ; kombinacja z dodaniem identyfikatara i odjeciem 1 - bo tak dziwnie OS robi
+  1961 1304 AD 00 03		     LDA DDEVIC
+  1962 1307 18			     clc	 
+  1963 1308 6D 01 03			 ADC DUNIT
+  1964 130B 38			     sec
+  1965 130C E9 01		     SBC #$01
+  1966 130E 29 0F		     AND #$0F	 ; zapamietanie numeru urzadzenia
+  1967 1310 8D 28 09			 STA BootDrive
+  1968 1313 20 3F 12		     JSR SeTDriveNR
+  1969 1316 20 3B 09			 JSR EditorOpen
+  1970 1319 4C 69 09		     JMP mainprog
+  1971 131C			QMEGstring
+  1972 131C 51 4D 45 47 2D 4F + 	.BY "QMEG-OS",0
+  1973 1324 48 53 20 70 72 6F + 	.BY "HS procedures for Happy/US-Doubler, big sectors loader and compressed file map by Pecus & Pirx 2010-05-26"
+  1974 					;.OPT List
+  1975 					
+  1976
+  1977 				     ;org $02e0
+  1978 				     ;.WO LoaderGo
+  1979 				     
+  1980 				    ; .WO START 
+  1981 					; na koniec pliku dwa bajty $00 bez naglowka (dla bootloadera)
+  1982 				;    OPT h-
+  1983 				;	org $0000
+  1984 				;	.WO $0000
+  1985 138D			EndOfCode
+  1985 = 0080			MAPCOUNTER
+  1985 = 0082			COMPRESSEDMAPCOUNTER
+  1985 = 0084			MAPCOUNTERMEM
+  1985 = 0086			PREVFILESECTOR
+  1985 = 0088			MAPPOSITIONMEM
+  1985 = 008A			SECTOROFFSET
+  1985 = 008C			SECTORSCOUNTER

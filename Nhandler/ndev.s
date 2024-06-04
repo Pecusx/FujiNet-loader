@@ -7,7 +7,7 @@
 	;; CURRENT IOCB IN ZERO PAGE
 
 DEBUG	=	0	; displays debug messages
-DONT_RELOCATE =	0	; set to one if you don't want to relocate code.
+DONT_RELOCATE =	1	; set to one if you don't want to relocate code.
 
 ZIOCB   =     $20      ; ZP IOCB
 ZICHID  =     ZIOCB    ; ID
@@ -86,12 +86,12 @@ SIOV    =     $E459   ; SIO ENTRY
 DEVIDN  =     $71     ; SIO DEVID
 DSREAD  =     $40     ; FUJI->ATARI
 DSWRIT  =     $80     ; ATARI->FUJI
-MAXDEV  =     4       ; # OF N: DEVS
+MAXDEV  =     1       ; # OF N: DEVS
 EOF     =     $88     ; ERROR 136
 EOL     =     $9B     ; EOL CHAR
 
 	;; ORG HERE
-	ORG	$6000
+	;ORG	$6000
 	
 RELOCATE_CODE_START:		
 ;; This is for OS/A+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -786,6 +786,6 @@ RELOCATE_START
 .endif ; DONT_RELOCATE
 	JMP NEW_START	
 
-	ORG $02E2 		; init
-	.WORD RELOCATE_START
-	END
+;	ORG $02E2 		; init
+;	.WORD RELOCATE_START
+;	END
