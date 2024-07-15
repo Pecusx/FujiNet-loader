@@ -1,0 +1,130 @@
+    0747: 78                SEI
+    0748: BA                TSX
+    0749: 86 35             STX BFENHI
+    074B: A9 0D             LDA #$0D
+    074D: 85 36             STA $36
+    074F: A9 0A             LDA #$0A
+    0751: 8D 04 D2          STA AUDF3
+    0754: A9 00             LDA #$00
+    0756: 8D 06 D2          STA AUDF4
+    0759: 85 30             STA STATUS
+    075B: A9 34             LDA #$34
+    075D: 8D 03 D3          STA PBCTL
+    0760: A2 80             LDX #$80
+J762
+    0762: CA                DEX
+    0763: D0 FD             BNE J762
+    0765: A9 23             LDA #$23
+    0767: 20 1A 08          JSR JS81A              ;[expand]
+    076A: A9 31             LDA #$31
+    076C: 85 31             STA CHKSUM
+    076E: 8D 0D D2          STA SEROUT
+    0771: A9 52             LDA #$52
+    0773: 20 26 08          JSR JS826              ;[expand]
+    0776: A5 38             LDA BUFRFL
+    0778: 20 26 08          JSR JS826              ;[expand]
+    077B: A5 39             LDA RECVDN
+    077D: 20 26 08          JSR JS826              ;[expand]
+    0780: A5 31             LDA CHKSUM
+    0782: 20 26 08          JSR JS826              ;[expand]
+J785
+    0785: AD 0E D2          LDA IRQST
+    0788: 29 08             AND #$08
+    078A: D0 F9             BNE J785
+    078C: 8D 0E D2          STA IRQEN
+    078F: 20 E3 07          JSR JS7E3              ;[expand]
+    0792: 20 FE 07          JSR JS7FE              ;[expand]
+    0795: A0 00             LDY #$00
+    0797: 84 31             STY CHKSUM
+J799
+    0799: 20 C6 07          JSR JS7C6              ;[expand]
+    079C: 91 32             STA (BUFRLO),Y
+    079E: 20 3A 08          JSR JS83A              ;[expand]
+    07A1: C8                INY
+    07A2: C4 34             CPY BFENLO
+    07A4: D0 F3             BNE J799
+    07A6: 20 C6 07          JSR JS7C6              ;[expand]
+    07A9: C5 31             CMP CHKSUM
+    07AB: F0 0B             BEQ J7B8
+J7AD
+    07AD: A0 90             LDY #$90
+    07AF: 84 30             STY STATUS
+    07B1: A6 35             LDX BFENHI
+    07B3: 9A                TXS
+    07B4: C6 36             DEC $36
+    07B6: D0 97             BNE $074F
+J7B8
+    07B8: A9 00             LDA #$00
+    07BA: 8D 07 D2          STA AUDC4
+    07BD: A5 10             LDA POKMSK
+    07BF: 8D 0E D2          STA IRQEN
+    07C2: 58                CLI
+    07C3: A4 30             LDY STATUS
+    07C5: 60                RTS
+;--------------------------------------------------
+JS7C6
+J7C6
+    07C6: AD 0E D2          LDA IRQST
+    07C9: 29 20             AND #$20
+    07CB: D0 F9             BNE J7C6
+    07CD: 8D 0E D2          STA IRQEN
+    07D0: A9 20             LDA #$20
+    07D2: 8D 0E D2          STA IRQEN
+    07D5: AD 0F D2          LDA SKSTAT
+    07D8: 8D 0A D2          STA SKRES
+    07DB: 29 20             AND #$20
+    07DD: F0 CE             BEQ J7AD
+    07DF: AD 0D D2          LDA SERIN
+    07E2: 60                RTS
+;--------------------------------------------------
+JS7E3
+    07E3: A0 03             LDY #$03
+    07E5: 20 ED 07          JSR JS7ED              ;[expand]
+    07E8: 20 FE 07          JSR JS7FE              ;[expand]
+    07EB: A0 00             LDY #$00
+JS7ED
+    07ED: A9 AD             LDA #<J7AD
+    07EF: 8D 26 02          STA CDTMA1
+    07F2: A9 07             LDA #>J7AD
+    07F4: 8D 27 02          STA CDTMA1+1
+    07F7: A9 01             LDA #$01
+    07F9: A2 00             LDX #$00
+    07FB: 4C 5C E4          JMP SETVBV             ;[expand]
+;--------------------------------------------------
+JS7FE
+    07FE: A9 13             LDA #$13
+    0800: 20 1A 08          JSR JS81A              ;[expand]
+    0803: A9 3C             LDA #$3C
+    0805: 8D 03 D3          STA PBCTL
+    0808: 20 C6 07          JSR JS7C6              ;[expand]
+    080B: C9 44             CMP #$44
+    080D: B0 9E             BCS 7AD
+    080F: A9 28             LDA #$28
+    0811: 8D 08 D2          STA AUDCTL
+    0814: A9 A8             LDA #$A8
+    0816: 8D 07 D2          STA AUDC4
+    0819: 60                RTS
+;--------------------------------------------------
+JS81A
+    081A: 8D 0F D2          STA SKCTL
+    081D: 8D 0A D2          STA SKRES
+    0820: A9 38             LDA #$38
+    0822: 8D 0E D2          STA IRQEN
+    0825: 60                RTS
+;--------------------------------------------------
+JS826
+    0826: AA                TAX
+    0827: AD 0E D2          LDA IRQST
+    082A: 29 10             AND #$10
+    082C: D0 F9             BNE $0827
+    082E: 8D 0E D2          STA IRQEN
+    0831: A9 10             LDA #$10
+    0833: 8D 0E D2          STA IRQEN
+    0836: 8A                TXA
+    0837: 8D 0D D2          STA SEROUT
+JS83A
+    083A: 18                CLC
+    083B: 65 31             ADC CHKSUM
+    083D: 69 00             ADC #$00
+    083F: 85 31             STA CHKSUM
+    0841: 60                RTS

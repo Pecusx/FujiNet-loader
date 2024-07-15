@@ -1,0 +1,436 @@
+mads 2.1.6 build 65 (4 Jun 23)
+Source: hs.asm
+     1
+     2
+     3 				     ;MICRO SPARTA DOS 4.7
+     4 					 
+     5 				; w wersji 4.7 dodac mo¿naby przechodzenie po kolejnych "ekranach" z lista plikow klawiszami
+     6 				; "prawo"/"lewo" albo "gora"/"dol" ... ... ale to b.trudne
+     7 				; ze wzgledu na mozliwosc roznej liczby plikow (stron) w zaleznosci czy wyswietlamy
+     8 				; dlugie nazwy czy nie - nie da sie tego latwo zliczyc
+     9
+    10 				; dodany "Backspace" jako powrot do katalogu wyzej.
+    11
+    12 				; w wersji 4.6c zmieniony sposob rozpoznawania wielkosci sektora, dodane czytanie
+    13 				; bloku PERCOM przy zmianie dysku...
+    14 				; UWAGA! Bufor na pierwszy sektor ma dalej 128b, bezposrednio za nim jest bufor na sektor
+    15 				; mapy, ktory moze byc zamazywany w chwili odczytu pierwszego sektora bez problemow.
+    16
+    17
+    18 				; w wersji 4.6b poprawione dwa male bugi i dodane kulturalne wyjscie do DOS (Shift+Esc) ...
+    19 				; ..... moznaby w tym momencie sprawdzac czy jest w ogole DOS w pamieci, bo bez DOS bedzie SelfTest
+    20 					 
+    21 				; w wersji 4.6 wyeliminowane chwilowe przelaczanie na domyslne kolory, ró¿ne poprawki procedur,
+    22 				; ¿eby wiêcej gier siê uruchamia³o (zmiany w resecie i zmiennych systemowych)
+    23 					 
+    24 				; w wersji 4.5 obsluga napedow 9-15 pod Ctrl-litera gotowa (napedy 1-8 zdublowane pod klawiszami 1-8 i Ctrl-litera
+    25 				; wyswietlanie "numeru" napedu w zaleznosci jak sie go wybierze (Dn: lub n: - cyfra lub litera)
+    26 					 
+    27 				; w wersji 4.4 (niepublikowanej) poprawiony blad. Nie moze byc dwa razy po sobie znacznika dziury w skompresowanej mapie
+    28 				; czyli dziura max 127 sektorow a nie jak porzednio 254
+    29 				; dodatkowo zapamietanie (na czas resetu przed czyszczeniem pamieci)
+    30 				; stanu aktywnych urzadzen PBI i odtworzenie go po resecie (dzieki Drac030)
+    31
+    32 				; stan urzadzen na szynie PBI	 
+    33 = 0247			PDVMASK = $0247
+    34 					 
+    35 				; nowa koncepcja zrobiona:
+    36
+    37 				; 1. wywaliæ turbo 'top-drive'
+    38
+    39 				; 2. przerobiæ loader i menu na obs³ugê sektorów dow. d³ugoœci
+    40
+    41 				; 3. przepisac czytanie tablicy sektorów indeksowych z loadera do menu:
+    42 				;    a. w menu odczytywane s¹ wszystkie sektory tablicy indeksowej
+    43 				;    b. budowana jest "skompresowana" tablica offsetów w stosunku do pierwszego sektora na nast. zasadzie:
+    44 				;       mamy nast. znaczniki : (nowa koncepcja)
+    45 				;       1xxxxxxx  -- (0xxxxxxx = ile sektorów omin¹æ) . Op³aci siê u¿ywaæ do max 255 sektorów do przeskoczenia.
+    46 				;       0xxxxxxx  -- (0xxxxxxx = ile kolejnych sektorów wczytaæ)
+    47 				;       00000000  -- nastêpne 2 bajty to numer kolejnego sektora do odczytania
+    48 				;               
+    49
+    50 				; 4. nowa 'skompresowana' tablica indeksowa podwyzsza memlo
+    51
+    52 					 
+    53 				     ;START ADDR = 1FFD
+    54 				     ;END ADDR = 28C9
+    55 				         ;.OPT noList
+    56 				         
+    57 				           icl 'lib/SYSEQU.ASM'
+Source: SYSEQU.ASM
+     1 				;    .PAGE "FTe SYSTEM EQUATES FOR ATARI"
+     2 				;
+     3 				;  FILE = #DN:SYSEQU.ASM
+     4 				;
+     5 				;
+     6 				; I/O CONTROL BLOCK EQUATES
+     7 				;
+     8 				;SAVEPC = *      ; SAVE CURRENT ORG
+     9 				;
+    10
+    11 = 0340			IOCB =  $0340   ;START OF SYSTEM IOCBS
+    12 				;
+    13 = 0340			ICHID = IOCB    ;DEVICE HANDLER IS (SET BY OS)
+    14 = 0341			ICDNO = IOCB+1    ;DEVICE NUMBER (SET BY OS)
+    15 = 0342			ICCOM = IOCB+2    ;I/O COMMAND
+    16 = 0343			ICSTA = IOCB+3    ;I/O STATUS
+    17 = 0344			ICBADR = IOCB+4   ;BUFFER ADDRESS
+    18 = 0346			ICPUT = IOCB+6   ;DH PUT ROUTINE (ADR-1)
+    19 = 0348			ICBLEN = IOCB+8   ;BUFFER LENGTH
+    20 = 034A			ICAUX1 = IOCB+10   ;AUX 1
+    21 = 034B			ICAUX2 = IOCB+11   ;AUX 2
+    22 = 034C			ICAUX3 = IOCB+12   ;AUX 3
+    23 = 034D			ICAUX4 = IOCB+13   ;AUX 4
+    24 = 034E			ICAUX5 = IOCB+14   ;AUX 5
+    25 = 034F			ICAUX6 = IOCB+15   ;AUX 6
+    26 				;
+    27 = 0010			IOCBLEN = 16 ;LENGTH OF ONE IOCB
+    28 				;
+    29 				; IOCB COMMAND VALUE EQUATES
+    30 				;
+    31 = 0003			COPN =  3       ;OPEN
+    32 = 0007			CGBINR = 7      ;GET BINARY RECORD
+    33 = 0005			CGTXTR = 5      ;GET TEXT RECORD
+    34 = 000B			CPBINR = 11     ;PUT BINARY RECORD
+    35 = 0009			CPTXTR = 9      ;PUT TEXT RECORD
+    36 = 000C			CCLOSE = 12     ;CLOSE 
+    37 = 000D			CSTAT = 13      ;GET STATUS
+    38 				;
+    39 				; DEVICE DEPENDENT COMMAND EQUATES FOR FILE MANAGER
+    40 				;
+    41 = 0020			CREN =  32      ;RENAME
+    42 = 0021			CERA =  33      ;ERASE
+    43 = 0023			CPRO =  35      ;PROTECT
+    44 = 0024			CUNP =  36      ;UNPROTECT
+    45 = 0025			CPOINT = 37     ;POINT
+    46 = 0026			CNOTE = 38      ;NOTE
+    47 				;
+    48 				; AUX1 VALUES REQD FOR OPEN
+    49 				;
+    50 = 0004			OPIN =  4       ;OPEN INPUT
+    51 = 0008			OPOUT = 8       ;OPEN OUTPUT
+    52 = 000C			OPUPD = 12      ;OPEN UPDATE
+    53 = 0009			OPAPND = 9      ;OPEN APPEND
+    54 = 0006			OPDIR = 6       ;OPEN DIRECTORY
+    55 				;
+    56 				;    .PAGE 
+    57 				;
+    58 				;    EXECUTE FLAG DEFINES
+    59 				;
+    60 = 0080			EXCYES = $80    ; EXECUTE IN PROGRESS
+    61 = 0040			EXCSCR = $40    ; ECHO EXCUTE INPUT TO SCREEN
+    62 = 0010			EXCNEW = $10    ; EXECUTE START UP MODE
+    63 = 0020			EXCSUP = $20    ; COLD START EXEC FLAG
+    64 				;
+    65 				; MISC ADDRESS EQUATES
+    66 				;
+    67 = 000A			CPALOC = $0A    ; POINTER TO CP/A
+    68 = 0008			WARMST = $08    ; WAR, START (0=COLD)
+    69 = 02E7			MEMLO = $02E7   ; AVAIL MEM (LOW) PTR
+    70 = 02E5			MEMTOP = $02E5  ; AVAIL MEM (HIGH) PTR
+    71 = 000E			APPMHI = $0E    ; UPPER LIMIT OF APPLICATION MEMORY
+    72 = 02E2			INITADR = $02E2 ; ATARI LOAD/INIT ADR
+    73 = 02E0			GOADR = $02E0   ; ATARI LOAD/GO ADR
+    74 = BFFA			CARTLOC = $BFFA ; CARTRIDGE RUN LOCATION
+    75 = E456			CIO =   $E456   ;CIO ENTRY ADR
+    76 = 009B			EOL =   $9B     ; END OF LINE CHAR
+    77 				;
+    78 				;  CP/A FUNCTION AND VALUE DISPLACEMSNT
+    79 				;     (INDIRECT THROUGH CPALOC)
+    80 				;           IE. (CPALOC),Y
+    81 				;
+    82 = 0003			CPGNFN = 3      ; GET NEXT FILE NAME
+    83 = 0007			CPDFDV = $07    ; DEFAULT DRIVE (3 BYTES)
+    84 = 000A			CPBUFP = $0A    ; CMD BUFF NEXT CHAR POINTR (1 BYTE)
+    85 = 000B			CPEXFL = $0B    ; EXECUTE FLAG
+    86 = 000C			CPEXFN = $0C    ; EXECUTE FILE NAME (16 BYTES)
+    87 = 001C			CPEXNP = $1C    ; EXECUTE NOTE/POINT VALUES
+    88 = 0021			CPFNAM = $21    ; FILENAME BUFFER
+    89 = 003D			RUNLOC = $3D    ; CP/A LOAD/RUN ADR
+    90 = 003F			CPCMDB = $3F    ; COMMAND BUFFER (60 BYTES)
+    91 = 00F3			CPCMDGO = $F3
+    92 				;
+    93 				;    *=  SAVEPC  ; RESTORE PC
+    94 				;
+    58
+    59 				     
+    60 = 000A			acktimeout = $a
+    61 = 0002			readtimeout = 2
+    62
+    63
+    64 = 0318			STACKP = $0318
+    65 = 0042			CRITIC = $42
+    66 = 02BD			DRETRY = $02BD
+    67 = 030F			CASFLG = $030F
+    68 = 029C			CRETRY = $029C
+    69
+    70
+    71 = 0002			CASINI = $02
+    72 				;WARMST = $08
+    73 = 0009			BOOT   = $09
+    74 = 000A			DOSVEC = $0a
+    75 = 000C			DOSINI = $0c
+    76 				;APPMHI = $0e
+    77
+    78 = 0010			IRQENS = $10
+    79
+    80
+    81 				; zmienne procedury ladowania pliku (w miejscu zmiennych CIO - ktore sa nieuzywane - niestety teraz sa)
+    82
+    83 				; najmlodszy z trzech bajtow zliczajacych do konca pliku - patrz ToFileEndH
+    84 = 0028			ToFileEndL = $28
+    85 = 003D			CompressedMapPos = $3D ; pozycja w skompresowanej mapie pliku
+    86
+    87 = 0030			CheckSUM = $30
+    88 = 0031			SecLenUS = $31
+    89 = 0032			SecBuffer = $32
+    90 = 0034			CRETRYZ = $34
+    91 = 0035			TransmitError =$35
+    92 = 0036			Looperka = $36
+    93 = 0037			StackCopy = $37
+    94
+    95
+    96 = 0058			SAVMSC = $58
+    97 				; Adres bufora przechowywania Aktualnie obrabianego sektora zawierajacego
+    98 				; katalog
+    99 = 00CA			CurrentDirBuf = $CA
+   100 				; adres konca tego bufora (2 bajty)
+   101 = 00CC			CurrentDirBufEnd = $CC
+   102 				; Adres (w buforze CurrentDirBuff, ale bezwzgledny) poczatku informacji
+   103 				; o obrabianym pliku (skok co $17)
+   104 = 00D0			CurrentFileInfoBuff = $D0
+   105 				; Numer sektora ktory nalezy przeczytac - mapy sektorow aktualnego katalogu (2 bajty)
+   106 = 00D2			DirMapSect = $D2
+   107 				; Flaga ustawiana na 1 kiedy skoncza sie pliki do wyswietlenia w danym katalogu
+   108 				; oznacza wyswietlanie ostatniej strony i jednoczesnie mowi o tym, ze po spacji
+   109 				; ma byc wyswietlany katalog od poczatku
+   110 = 00D6			LastFilesPageFlag = $D6
+   111 				; Licznik nazw plikow wyswietlonych aktualnie na ekranie, po wyswietleniu strony
+   112 				; zawiera liczbe widocznych na ekranie plikow (1 bajt)
+   113 = 00D9			NamesOnScreen = $D9
+   114 				; wskaznik pozycji w mapie sektorow czytanego katalogu (2 bajty) - nowa zmienna
+   115 				; wczesniej byl 1 bajt w $D6
+   116 = 00E2			InMapPointer = $E2
+   117 				; zmienna tymczasowa na ZP (2 bajty)
+   118 = 00E4			TempZP = $E4
+   119
+   120 = 020A			VSERIN = $020a
+   121 = 02C5			COLPF1S = $02c5
+   122 = 02C6			COLPF2S = $02c6
+   123 = 02C8			COLBAKS = $02c8
+   124
+   125 = 0244			COLDST = $0244
+   126 				;MEMTOP = $02e5
+   127 				;MEMLO  = $02e7
+   128
+   129 = 02FC			KBCODES = $02fc
+   130
+   131 = 0300			DDEVIC = $0300
+   132 = 0301			DUNIT  = $0301
+   133 = 0302			DCOMND = $0302
+   134 = 0304			DBUFA  = $0304
+   135 = 0308			DBYT   = $0308
+   136 = 030A			DAUX1  = $030a
+   137 = 030B			DAUX2  = $030b
+   138
+   139 = 0342			ICCMD = $0342
+   140 = 0344			ICBUFA = $0344
+   141 				;ICBUFA+1 = $0345
+   142 = 0348			ICBUFL = $0348
+   143 				;ICBUFL+1 = $0349
+   144 = 034A			ICAX1 = $034a
+   145 = 034B			ICAX2 = $034b
+   146
+   147 = 03FA			GINTLK = $03FA ; 0 brak carta - potrzebne przy wylaczaniu Sparty X by oszukac OS ze nie bylo carta
+   148
+   149 = D204			AUDF3  = $d204
+   150 = D206			AUDF4 = $d206
+   151 = D207			AUDC4 = $d207
+   152 = D208			AUDCTL = $d208
+   153 = D20A			SKSTRES = $d20a
+   154 = D20D			SEROUT = $D20d
+   155 = D20D			SERIN = $D20d
+   156 = D20E			IRQEN = $D20e
+   157 = D20E			IRQST = $D20e
+   158
+   159
+   160 = D20F			SKSTAT = $d20f
+   161 = D20F			SKCTL = $d20f
+   162
+   163
+   164 = D303			PBCTL  = $d303
+   165 = D301			PORTB  = $d301
+   166
+   167 = D40B			VCOUNT = $D40B
+   168
+   169 = E456			JCIOMAIN   = $e456
+   170 = E459			JSIOINT   = $e459
+   171 = E471			JTESTROM = $e471
+   172 = E474			JRESETWM = $e474
+   173 = E477			JRESETCD = $e477
+   174
+   175
+   176 					org $0600
+   177
+   178 				; tutaj procka turbo US (opcjonalnie wy³¹czana)
+   179 				; UWAGA !!!!!!!!!!!!!!
+   180 				; Ta procedura ma maksymalna dlugosc jaka moze miec!!!!!
+   181 				; powiekszenie jej O BAJT spowoduje ze przekroczy strone
+   182 				; i nie przepisze sie prawidlowo na swoje miejsce !!!!!	 
+   183 				HappyUSMovedProc ;
+   184
+   185 FFFF> 0600-06FE> AD 04 + 	LDA DBUFA
+   186 0603 85 32			STA SecBuffer
+   187 0605 AD 05 03			LDA DBUFA+1
+   188 0608 85 33			STA SecBuffer+1
+   189
+   190 060A AD 08 03			LDA DBYT
+   191 060D 85 31			STA SecLenUS
+   192
+   193 060F 78				SEI
+   194 0610 BA				TSX
+   195 0611 86 37			STX StackCopy
+   196 0613 A9 0D			LDA #$0D
+   197 0615 85 34			STA CRETRYZ
+   198 					 ;command retry on zero page
+   199 0617			CommandLoop
+   200 = 0618			HappySpeed = *+1
+   201 0617 A9 28			LDA #$28 ;here goes speed from "?"
+   202 0619 8D 04 D2			STA AUDF3
+   203 061C A9 34			LDA #$34
+   204 061E 8D 03 D3			STA PBCTL ;ustawienie linii command
+   205 0621 A2 80			LDX #$80
+   206 0623			DelayLoopCmd
+   207 0623 CA				DEX
+   208 0624 D0 FD			BNE DelayLoopCmd
+   209 0626 8E 06 D2			STX AUDF4 ; zero
+   210 0629 86 35			STX TransmitError
+   211 				;	pokey init
+   212 062B A9 23			LDA #$23
+   213 062D 20 A1 06		xjsr1	JSR SecTransReg
+   214 					;
+   215
+   216 0630 18				CLC
+   217 0631 AD 00 03			LDA DDEVIC    ; tu zawsze jest $31 (przynajmniej powinno)
+   218 0634 6D 01 03			ADC DUNIT     ; dodajemy numer stacji
+   219 0637 69 FF			ADC #$FF	; i odejmujemy jeden (jak w systemie Atari)
+   220 0639 85 30			STA CheckSum
+   221 063B 8D 0D D2			STA SEROUT
+   222 063E AD 02 03			LDA DCOMND
+   223 0641 20 B7 06		xjsr2	JSR PutSIOByte
+   224 0644 AD 0A 03			LDA DAUX1
+   225 0647 20 B7 06		xjsr3	JSR PutSIOByte
+   226 064A AD 0B 03			LDA DAUX2
+   227 064D 20 B7 06		xjsr4	JSR PutSIOByte
+   228 0650 A5 30			LDA CheckSum
+   229 0652 20 B7 06		xjsr5	JSR PutSIOByte
+   230
+   231 0655			waitforEndOftransmission
+   232 0655 AD 0E D2			LDA IRQST
+   233 0658 29 08			AND #$08
+   234 065A D0 F9			BNE waitforEndOftransmission
+   235
+   236 065C A9 13			LDA #$13
+   237 065E 20 A1 06		xjsr6	JSR SecTransReg
+   238
+   239 0661 A9 3C			LDA #$3c
+   240 0663 8D 03 D3			STA PBCTL ;command line off
+   241 				; two ACK's
+   242 0666 A0 02			LDY #2
+   243 0668			DoubleACK
+   244 0668 20 D3 06		xjsr7	JSR GetSIOByte
+   245 066B C9 44			CMP #$44
+   246 066D B0 19			BCS ErrorHere
+   247 066F 88				DEY
+   248 0670 D0 F6			BNE DoubleACK
+   249
+   250 					;ldy #0
+   251 0672 84 30			STY CheckSum
+   252 0674			ReadSectorLoop
+   253 0674 20 D3 06		xjsr8	JSR GetSIOByte
+   254 0677 91 32			STA (SecBuffer),y
+   255 0679 20 CB 06		xjsr9	JSR AddCheckSum
+   256 067C C8				INY
+   257 067D C4 31			CPY SecLenUS
+   258 067F D0 F3			BNE ReadSectorLoop
+   259
+   260 0681 20 D3 06		xjsrA	JSR GetSIOByte
+   261 0684 C5 30			CMP CheckSum
+   262 0686 F0 0B			BEQ EndOfTransmission
+   263 				;error!!!
+   264 0688			ErrorHere
+   265 0688 A0 90			LDY #$90
+   266 068A 84 35			STY TransmitError
+   267 068C A6 37			LDX StackCopy
+   268 068E 9A				TXS
+   269 068F C6 34			DEC CRETRYZ
+   270 0691 D0 84			BNE CommandLoop
+   271
+   272 0693			EndOfTransmission
+   273 0693 A9 00			LDA #0
+   274 0695 8D 07 D2			STA AUDC4
+   275 0698 A5 10			LDA IRQENS
+   276 069A 8D 0E D2			STA IRQEN
+   277 069D 58				CLI
+   278 069E A4 35			LDY TransmitError
+   279 06A0 60				RTS
+   280
+   281 06A1			SecTransReg
+   282 06A1 8D 0F D2			STA SKCTL
+   283 06A4 8D 0A D2			STA SKSTRES
+   284 06A7 A9 38			LDA #$38
+   285 06A9 8D 0E D2			STA IRQEN
+   286 06AC A9 28			LDA #$28
+   287 06AE 8D 08 D2			STA AUDCTL
+   288 06B1 A9 A8			LDA #$A8
+   289 06B3 8D 07 D2			STA AUDC4
+   290 06B6 60				RTS
+   291
+   292 06B7			PutSIOByte
+   293 06B7 AA				TAX
+   294 06B8			waitforSerial
+   295 06B8 AD 0E D2			LDA IRQST
+   296 06BB 29 10			AND #$10
+   297 06BD D0 F9			BNE waitforSerial
+   298
+   299 06BF 8D 0E D2			STA IRQEN
+   300 06C2 A9 10			LDA #$10
+   301 06C4 8D 0E D2			STA IRQEN
+   302
+   303 06C7 8A				TXA
+   304 06C8 8D 0D D2			STA SEROUT
+   305
+   306 06CB			AddCheckSum
+   307 06CB 18				CLC
+   308 06CC 65 30			ADC CheckSum
+   309 06CE 69 00			ADC #0
+   310 06D0 85 30			STA CheckSum
+   311 06D2 60				RTS
+   312
+   313 06D3			GetSIOByte
+   314 06D3 A2 0A			LDX #10  ;acktimeout
+   315 06D5			ExternalLoop
+   316 06D5 A9 00			LDA #0
+   317 06D7 85 36			STA looperka
+   318 06D9			InternalLoop
+   319 06D9 AD 0E D2			LDA IRQST
+   320 06DC 29 20			AND #$20
+   321 06DE F0 09			BEQ ACKReceive
+   322 06E0 C6 36			DEC looperka
+   323 06E2 D0 F5			BNE InternalLoop
+   324 06E4 CA				DEX
+   325 06E5 D0 EE			BNE ExternalLoop
+   326 06E7 F0 9F			BEQ ErrorHere
+   327 06E9			ACKReceive
+   328 					; zero we have now
+   329 06E9 8D 0E D2			STA IRQST
+   330 06EC A9 20			LDA #$20
+   331 06EE 8D 0E D2			STA IRQST
+   332 06F1 AD 0F D2			LDA SKSTAT
+   333 06F4 8D 0A D2			STA SKSTRES
+   334 06F7 29 20			AND #$20
+   335 06F9 F0 8D			BEQ ErrorHere
+   336 					;
+   337 06FB AD 0D D2			LDA SERIN
+   338 06FE 60				RTS
+   339 06FF			EndHappyUSProc
