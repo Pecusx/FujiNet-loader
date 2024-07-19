@@ -84,8 +84,8 @@ IRQENS = $10
 ToFileEndL = $28
 CompressedMapPos = $3D ; pozycja w skompresowanej mapie pliku
 
-CheckSUM = $30
-SecLenUS = $31
+SecLenUS = $30
+CheckSUM = $31
 SecBuffer = $32
 CRETRYZ = $34
 TransmitError =$35
@@ -246,9 +246,13 @@ xjsr7	JSR GetSIOByte
 	BCS ErrorHere
 	DEY
 	BNE DoubleACK
-
+    
 	;ldy #0
 	STY CheckSum
+
+    bit DSTATS  ; send or recieve data?
+    bmi WriteSectorLoop
+
 ReadSectorLoop
 xjsr8	JSR GetSIOByte
 	STA (SecBuffer),y
@@ -260,6 +264,18 @@ xjsr9	JSR AddCheckSum
 xjsrA	JSR GetSIOByte
 	CMP CheckSum
 	BEQ EndOfTransmission
+    BNE ErrorHere
+
+WriteSectorLoop
+	LDA (SecBuffer),y
+xjsr8x	JSR PutSIOByte
+	INY
+	CPY SecLenUS
+	BNE WriteSectorLoop
+    lda CheckSUM
+    JSR PutSIOByte
+    ;.....
+    
 ;error!!!
 ErrorHere
 	LDY #$90
